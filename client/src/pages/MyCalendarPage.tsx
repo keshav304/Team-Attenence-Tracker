@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { entryApi, holidayApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import type { Entry, Holiday, StatusType } from '../types';
@@ -15,6 +15,13 @@ import {
   getDayOfWeek,
 } from '../utils/date';
 import toast from 'react-hot-toast';
+import {
+  BulkActionToolbar,
+  CopyFromDateModal,
+  RepeatPatternModal,
+  CopyRangeModal,
+  TemplatesPanel,
+} from '../components/BulkActions';
 
 const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -41,6 +48,17 @@ const MyCalendarPage: React.FC = () => {
   const [modalStartTime, setModalStartTime] = useState('');
   const [modalEndTime, setModalEndTime] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // ─── Multi-select / drag state ───────────────
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<string | null>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  // ─── Modal states for advanced features ──────
+  const [showCopyModal, setShowCopyModal] = useState(false);
+  const [showRepeatModal, setShowRepeatModal] = useState(false);
+  const [showCopyRangeModal, setShowCopyRangeModal] = useState(false);
 
   const days = getDaysInMonth(month);
   const firstDayOfWeek = getDayOfWeek(days[0]);
@@ -80,8 +98,48 @@ const MyCalendarPage: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  // Open modal for a given date
+  // ─── Drag selection handlers ──────────────────
+  const isSelectable = (date: string): boolean => {
+    return !isWeekend(date) && !holidays[date] && (isAdmin || canMemberEdit(date));
+  };
+
+  const getDatesInRange = (start: string, end: string): string[] => {
+    const ordered = start <= end ? [start, end] : [end, start];
+    return days.filter((d) => d >= ordered[0] && d <= ordered[1] && isSelectable(d));
+  };
+
+  const handleMouseDown = (date: string) => {
+    if (!isSelectable(date)) return;
+    setIsDragging(true);
+    setDragStart(date);
+    setSelectedDates([date]);
+  };
+
+  const handleMouseEnter = (date: string) => {
+    if (!isDragging || !dragStart || !isSelectable(date)) return;
+    setSelectedDates(getDatesInRange(dragStart, date));
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    const handler = () => { setIsDragging(false); };
+    window.addEventListener('mouseup', handler);
+    return () => window.removeEventListener('mouseup', handler);
+  }, []);
+
+  const toggleDateSelection = (date: string) => {
+    if (!isSelectable(date)) return;
+    setSelectedDates((prev) =>
+      prev.includes(date) ? prev.filter((d) => d !== date) : [...prev, date]
+    );
+  };
+
+  // ─── Open single-day modal ─────────────────────
   const openModal = (date: string) => {
+    if (selectedDates.length > 1) return;
     const existing = entries[date];
     setEditDate(date);
     setModalStatus(existing?.status || 'wfh');
@@ -98,7 +156,6 @@ const MyCalendarPage: React.FC = () => {
   const handleSave = async () => {
     if (!editDate) return;
 
-    // Validate time
     if ((modalStartTime && !modalEndTime) || (!modalStartTime && modalEndTime)) {
       toast.error('Provide both start and end time, or leave both empty');
       return;
@@ -108,12 +165,16 @@ const MyCalendarPage: React.FC = () => {
       return;
     }
 
+    if (modalStatus === 'leave' && holidays[editDate]) {
+      toast('This date is already a holiday', { icon: '⚠️' });
+    }
+    if (modalStatus === 'leave' && modalStartTime && modalEndTime) {
+      toast('Setting time on a leave day is unusual', { icon: '⚠️' });
+    }
+
     setSaving(true);
     try {
       if (modalStatus === 'wfh') {
-        // Delete entry (revert to WFH) — but still save note/time if user wants
-        // If note or time is set, we need an entry. Use "office" fallback? No — spec says only office/leave stored.
-        // If status is WFH we delete the entry entirely (time & note go away).
         await entryApi.deleteEntry(editDate);
         setEntries((prev) => {
           const copy = { ...prev };
@@ -183,7 +244,6 @@ const MyCalendarPage: React.FC = () => {
   const workingDays = days.filter((d) => !isWeekend(d) && !holidays[d]).length;
   const wfhDays = workingDays - officeDays - leaveDays;
 
-  // Format a date for the modal title
   const formatDateLong = (d: string) => {
     const [y, m, day] = d.split('-').map(Number);
     return new Date(y, m - 1, day).toLocaleDateString('en-US', {
@@ -197,7 +257,7 @@ const MyCalendarPage: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-900">My Calendar</h1>
         <div className="flex items-center gap-3">
           <button
@@ -225,7 +285,7 @@ const MyCalendarPage: React.FC = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-4 gap-3 mb-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
           <div className="text-2xl font-bold text-blue-600">{officeDays}</div>
           <div className="text-xs text-gray-500 mt-1">🏢 Office</div>
@@ -244,97 +304,197 @@ const MyCalendarPage: React.FC = () => {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          {/* Weekday headers */}
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {WEEKDAY_NAMES.map((name) => (
-              <div
-                key={name}
-                className="text-center text-xs font-semibold text-gray-500 py-1"
-              >
-                {name}
-              </div>
-            ))}
-          </div>
+      {/* ─── Action Toolbar ───────────────────── */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button onClick={() => setShowRepeatModal(true)}
+          className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">
+          🔄 Repeat Pattern
+        </button>
+        <button onClick={() => setShowCopyRangeModal(true)}
+          className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">
+          ⚡ Copy Week/Month
+        </button>
+        {selectedDates.length > 0 && (
+          <button onClick={() => setShowCopyModal(true)}
+            className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">
+            📋 Copy From Date → {selectedDates.length} selected
+          </button>
+        )}
+        {selectedDates.length > 0 && (
+          <button onClick={() => setSelectedDates([])}
+            className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-600">
+            Clear selection
+          </button>
+        )}
+      </div>
 
-          {/* Calendar grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {/* Empty cells for offset */}
-            {Array.from({ length: firstDayOfWeek }).map((_, i) => (
-              <div key={`empty-${i}`} />
-            ))}
+      {/* Bulk action bar */}
+      <BulkActionToolbar
+        selectedDates={selectedDates}
+        holidays={holidays}
+        entries={entries}
+        onDone={fetchData}
+        onClearSelection={() => setSelectedDates([])}
+      />
 
-            {days.map((date) => {
-              const info = getStatusInfo(date);
-              const weekend = isWeekend(date);
-              const today = isToday(date);
-              const past = isPast(date);
-              const canEdit =
-                !weekend && !holidays[date] && (isAdmin || canMemberEdit(date));
-              const dayData = entries[date];
-              const hasTime = dayData?.startTime && dayData?.endTime;
-              const hasNote = !!dayData?.note;
-
-              return (
-                <div
-                  key={date}
-                  onClick={() => canEdit && openModal(date)}
-                  className={`
-                    relative rounded-lg border p-2 min-h-[80px] transition-all
-                    ${info.bg}
-                    ${today ? 'ring-2 ring-primary-400 ring-offset-1' : ''}
-                    ${canEdit ? 'cursor-pointer hover:shadow-md' : ''}
-                    ${past && !isAdmin ? 'opacity-50' : ''}
-                    ${weekend ? 'border-transparent' : ''}
-                  `}
-                  title={
-                    holidays[date]
-                      ? holidays[date]
-                      : `${info.label}${hasTime ? ` (${dayData.startTime}–${dayData.endTime})` : ''}${hasNote ? ` — ${dayData.note}` : ''}`
-                  }
-                >
+      <div className="flex gap-4">
+        {/* Calendar */}
+        <div className="flex-1">
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4" ref={calendarRef}>
+              {/* Weekday headers */}
+              <div className="grid grid-cols-7 gap-1 mb-2">
+                {WEEKDAY_NAMES.map((name) => (
                   <div
-                    className={`text-xs font-semibold ${
-                      today ? 'text-primary-600' : info.textColor
-                    }`}
+                    key={name}
+                    className="text-center text-xs font-semibold text-gray-500 py-1"
                   >
-                    {getDayNumber(date)}
+                    {name}
                   </div>
-                  {!weekend && (
-                    <>
-                      <div className="text-lg text-center mt-0.5">{info.emoji}</div>
-                      <div className="text-[10px] text-center font-medium truncate">
-                        {holidays[date] ? holidays[date] : info.label}
+                ))}
+              </div>
+
+              {/* Calendar grid */}
+              <div className="grid grid-cols-7 gap-1 select-none">
+                {Array.from({ length: firstDayOfWeek }).map((_, i) => (
+                  <div key={`empty-${i}`} />
+                ))}
+
+                {days.map((date) => {
+                  const info = getStatusInfo(date);
+                  const weekend = isWeekend(date);
+                  const today = isToday(date);
+                  const past = isPast(date);
+                  const canEdit =
+                    !weekend && !holidays[date] && (isAdmin || canMemberEdit(date));
+                  const dayData = entries[date];
+                  const hasTime = dayData?.startTime && dayData?.endTime;
+                  const hasNote = !!dayData?.note;
+                  const isSelected = selectedDates.includes(date);
+
+                  // Conflict indicators
+                  const isLeaveOnHoliday = dayData?.status === 'leave' && holidays[date];
+                  const hasTimeOnLeave = dayData?.status === 'leave' && hasTime;
+
+                  return (
+                    <div
+                      key={date}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (canEdit) {
+                          if (e.ctrlKey || e.metaKey) {
+                            toggleDateSelection(date);
+                          } else {
+                            handleMouseDown(date);
+                          }
+                        }
+                      }}
+                      onMouseEnter={() => handleMouseEnter(date)}
+                      onMouseUp={() => {
+                        handleMouseUp();
+                        if (canEdit && selectedDates.length <= 1 && dragStart === date) {
+                          openModal(date);
+                        }
+                      }}
+                      className={`
+                        relative rounded-lg border p-2 min-h-[80px] transition-all
+                        ${info.bg}
+                        ${today ? 'ring-2 ring-primary-400 ring-offset-1' : ''}
+                        ${canEdit ? 'cursor-pointer hover:shadow-md' : ''}
+                        ${past && !isAdmin ? 'opacity-50' : ''}
+                        ${weekend ? 'border-transparent' : ''}
+                        ${isSelected ? 'ring-2 ring-indigo-400 ring-offset-1 shadow-md' : ''}
+                      `}
+                      title={
+                        holidays[date]
+                          ? holidays[date]
+                          : `${info.label}${hasTime ? ` (${dayData.startTime}–${dayData.endTime})` : ''}${hasNote ? ` — ${dayData.note}` : ''}`
+                      }
+                    >
+                      <div
+                        className={`text-xs font-semibold ${
+                          today ? 'text-primary-600' : info.textColor
+                        }`}
+                      >
+                        {getDayNumber(date)}
                       </div>
-                      {/* Time badge */}
-                      {hasTime && (
-                        <div className="text-[9px] text-center text-gray-500 mt-0.5 leading-tight">
-                          ⏰ {dayData.startTime}–{dayData.endTime}
-                        </div>
+                      {!weekend && (
+                        <>
+                          <div className="text-lg text-center mt-0.5">{info.emoji}</div>
+                          <div className="text-[10px] text-center font-medium truncate">
+                            {holidays[date] ? holidays[date] : info.label}
+                          </div>
+                          {hasTime && (
+                            <div className="text-[9px] text-center text-gray-500 mt-0.5 leading-tight">
+                              ⏰ {dayData.startTime}–{dayData.endTime}
+                            </div>
+                          )}
+                          {hasNote && (
+                            <div className="absolute top-1 right-1 text-[9px]" title={dayData.note}>
+                              📝
+                            </div>
+                          )}
+                          {isLeaveOnHoliday && (
+                            <div className="absolute bottom-0.5 left-0.5 text-[8px] bg-amber-100 text-amber-700 px-1 rounded">
+                              ⚠️
+                            </div>
+                          )}
+                          {hasTimeOnLeave && (
+                            <div className="absolute bottom-0.5 right-0.5 text-[8px] bg-amber-100 text-amber-700 px-1 rounded">
+                              ⏰⚠️
+                            </div>
+                          )}
+                          {isSelected && (
+                            <div className="absolute top-0.5 left-0.5 text-[10px] bg-indigo-500 text-white rounded-full w-4 h-4 flex items-center justify-center">
+                              ✓
+                            </div>
+                          )}
+                        </>
                       )}
-                      {/* Note indicator */}
-                      {hasNote && (
-                        <div className="absolute top-1 right-1 text-[9px]" title={dayData.note}>
-                          📝
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <p className="mt-3 text-xs text-gray-500">
+            Click a date to edit · Drag to select range · Ctrl+Click for multi-select
+          </p>
         </div>
+
+        {/* ─── Side Panel: Templates ──────────── */}
+        <div className="w-72 flex-shrink-0 hidden lg:block">
+          <TemplatesPanel selectedDates={selectedDates} onApplied={() => { fetchData(); setSelectedDates([]); }} />
+        </div>
+      </div>
+
+      {/* ─── Modals ────────────────────────────── */}
+      {showCopyModal && (
+        <CopyFromDateModal
+          selectedDates={selectedDates}
+          onDone={() => { fetchData(); setSelectedDates([]); }}
+          onClose={() => setShowCopyModal(false)}
+        />
       )}
 
-      <p className="mt-4 text-xs text-gray-500">
-        Click a date to set status, active hours, and notes
-      </p>
+      {showRepeatModal && (
+        <RepeatPatternModal
+          onDone={fetchData}
+          onClose={() => setShowRepeatModal(false)}
+        />
+      )}
+
+      {showCopyRangeModal && (
+        <CopyRangeModal
+          onDone={fetchData}
+          onClose={() => setShowCopyRangeModal(false)}
+        />
+      )}
 
       {/* ─── Day Detail Modal ──────────────────── */}
       {editDate && (
@@ -347,6 +507,18 @@ const MyCalendarPage: React.FC = () => {
               {formatDateLong(editDate)}
             </h2>
             <p className="text-xs text-gray-500 mb-5">Set your status, hours &amp; note for this day</p>
+
+            {/* Conflict warnings */}
+            {holidays[editDate] && (
+              <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                ⚠️ This date is a holiday: {holidays[editDate]}
+              </div>
+            )}
+            {entries[editDate] && (
+              <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+                ℹ️ This will overwrite the existing entry ({entries[editDate].status})
+              </div>
+            )}
 
             {/* Status Selector */}
             <div className="mb-5">
@@ -372,6 +544,13 @@ const MyCalendarPage: React.FC = () => {
                 ))}
               </div>
             </div>
+
+            {/* Leave + time warning */}
+            {modalStatus === 'leave' && (modalStartTime || modalEndTime) && (
+              <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                ⚠️ Setting a time window on a leave day is unusual
+              </div>
+            )}
 
             {/* Active Time Window */}
             <div className="mb-5">
@@ -404,7 +583,7 @@ const MyCalendarPage: React.FC = () => {
                 )}
               </div>
               {modalStartTime && modalEndTime && modalEndTime <= modalStartTime && (
-                <p className="text-xs text-red-500 mt-1">End time must be after start time</p>
+                <p className="text-xs text-red-500 mt-1">⚠️ End time must be after start time</p>
               )}
             </div>
 

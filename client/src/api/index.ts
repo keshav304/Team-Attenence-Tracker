@@ -6,6 +6,11 @@ import type {
   Holiday,
   TeamViewResponse,
   User,
+  Template,
+  BulkResult,
+  CopyResult,
+  TeamSummary,
+  InsightsResponse,
 } from '../types';
 
 // ─── Auth ────────────────────────────────────
@@ -33,6 +38,9 @@ export const entryApi = {
   getTeamEntries: (month: string) =>
     api.get<ApiResponse<TeamViewResponse>>('/entries/team', { params: { month } }),
 
+  getTeamSummary: (month: string) =>
+    api.get<ApiResponse<TeamSummary>>('/entries/team-summary', { params: { month } }),
+
   upsertEntry: (date: string, status: 'office' | 'leave', opts?: { note?: string; startTime?: string; endTime?: string }) =>
     api.put<ApiResponse<Entry>>('/entries', { date, status, ...opts }),
 
@@ -44,6 +52,26 @@ export const entryApi = {
 
   adminDeleteEntry: (userId: string, date: string) =>
     api.delete<ApiResponse>(`/entries/admin/${userId}/${date}`),
+
+  // Bulk operations
+  bulkSet: (dates: string[], status: 'office' | 'leave' | 'clear', opts?: { note?: string; startTime?: string; endTime?: string }) =>
+    api.post<ApiResponse<BulkResult>>('/entries/bulk', { dates, status, ...opts }),
+
+  copyFromDate: (sourceDate: string, targetDates: string[]) =>
+    api.post<ApiResponse<CopyResult>>('/entries/copy', { sourceDate, targetDates }),
+
+  repeatPattern: (data: {
+    status: 'office' | 'leave' | 'clear';
+    daysOfWeek: number[];
+    startDate: string;
+    endDate: string;
+    note?: string;
+    startTime?: string;
+    endTime?: string;
+  }) => api.post<ApiResponse<BulkResult>>('/entries/repeat', data),
+
+  copyRange: (sourceStart: string, sourceEnd: string, targetStart: string) =>
+    api.post<ApiResponse<BulkResult>>('/entries/copy-range', { sourceStart, sourceEnd, targetStart }),
 };
 
 // ─── Admin Users ─────────────────────────────
@@ -76,4 +104,22 @@ export const holidayApi = {
 
   deleteHoliday: (id: string) =>
     api.delete<ApiResponse>(`/holidays/${id}`),
+};
+
+// ─── Templates ───────────────────────────────
+export const templateApi = {
+  getTemplates: () =>
+    api.get<ApiResponse<Template[]>>('/templates'),
+
+  createTemplate: (data: { name: string; status: 'office' | 'leave'; startTime?: string; endTime?: string; note?: string }) =>
+    api.post<ApiResponse<Template>>('/templates', data),
+
+  deleteTemplate: (id: string) =>
+    api.delete<ApiResponse>(`/templates/${id}`),
+};
+
+// ─── Insights ────────────────────────────────
+export const insightsApi = {
+  getInsights: (month: number, year: number) =>
+    api.get<ApiResponse<InsightsResponse>>('/insights', { params: { month, year } }),
 };

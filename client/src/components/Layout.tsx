@@ -13,6 +13,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       ? [
           { to: '/admin/users', label: 'Users' },
           { to: '/admin/holidays', label: 'Holidays' },
+          { to: '/admin/insights', label: 'Insights' },
         ]
       : []),
   ];

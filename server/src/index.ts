@@ -6,6 +6,8 @@ import authRoutes from './routes/authRoutes';
 import entryRoutes from './routes/entryRoutes';
 import adminRoutes from './routes/adminRoutes';
 import holidayRoutes from './routes/holidayRoutes';
+import templateRoutes from './routes/templateRoutes';
+import insightsRoutes from './routes/insightsRoutes';
 
 const app = express();
 
@@ -18,6 +20,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/entries', entryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/holidays', holidayRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/insights', insightsRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

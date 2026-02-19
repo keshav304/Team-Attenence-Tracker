@@ -7,9 +7,11 @@ import {
   isWithinPlanningWindow,
   getMonthRange,
   getTodayString,
+  getFutureDateString,
 } from '../utils/date';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Validate and sanitise the optional time window. Returns error message or null. */
 const validateTimeWindow = (
@@ -353,6 +355,443 @@ export const getTeamEntries = async (
         team: teamData,
       },
     });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─── Helper: filter valid dates for a member ───────────────
+const filterAllowedDates = (dates: string[], isAdmin: boolean): string[] => {
+  return dates.filter((d) => {
+    if (!DATE_RE.test(d)) return false;
+    if (!isAdmin && isPastDate(d)) return false;
+    if (!isAdmin && !isWithinPlanningWindow(d)) return false;
+    return true;
+  });
+};
+
+/**
+ * Bulk set status for multiple dates.
+ * POST /api/entries/bulk
+ * Body: { dates: string[], status: 'office' | 'leave' | 'clear', note?, startTime?, endTime? }
+ */
+export const bulkSetEntries = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { dates, status, note, startTime, endTime } = req.body;
+    const userId = req.user!._id;
+    const isAdmin = req.user!.role === 'admin';
+
+    if (!Array.isArray(dates) || dates.length === 0) {
+      res.status(400).json({ success: false, message: 'dates array is required' });
+      return;
+    }
+
+    if (!['office', 'leave', 'clear'].includes(status)) {
+      res.status(400).json({ success: false, message: 'Status must be "office", "leave", or "clear"' });
+      return;
+    }
+
+    // Validate time window
+    const timeErr = validateTimeWindow(startTime, endTime);
+    if (timeErr && status !== 'clear') {
+      res.status(400).json({ success: false, message: timeErr });
+      return;
+    }
+
+    const allowedDates = filterAllowedDates(dates, isAdmin);
+    const results: { date: string; success: boolean; message?: string }[] = [];
+
+    for (const date of allowedDates) {
+      try {
+        if (status === 'clear') {
+          await Entry.findOneAndDelete({ userId, date });
+          results.push({ date, success: true, message: 'cleared' });
+        } else {
+          const updateData: Record<string, unknown> = {
+            userId,
+            date,
+            status,
+            note: note ? sanitizeText(note) : undefined,
+            startTime: startTime || undefined,
+            endTime: endTime || undefined,
+          };
+          const unsetFields: Record<string, 1> = {};
+          if (!startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
+          if (!note) { unsetFields.note = 1; }
+
+          const updateOp: Record<string, unknown> = { $set: updateData };
+          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+
+          await Entry.findOneAndUpdate(
+            { userId, date },
+            updateOp,
+            { upsert: true, new: true, runValidators: true }
+          );
+          results.push({ date, success: true });
+        }
+      } catch (err: any) {
+        results.push({ date, success: false, message: err.message });
+      }
+    }
+
+    // Report skipped dates
+    const skipped = dates.filter((d: string) => !allowedDates.includes(d));
+    skipped.forEach((d: string) => results.push({ date: d, success: false, message: 'Outside allowed range' }));
+
+    res.json({
+      success: true,
+      data: {
+        processed: results.filter((r) => r.success).length,
+        skipped: results.filter((r) => !r.success).length,
+        results,
+      },
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Copy entries from one source date to one or more target dates.
+ * POST /api/entries/copy
+ * Body: { sourceDate: string, targetDates: string[] }
+ */
+export const copyFromDate = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { sourceDate, targetDates } = req.body;
+    const userId = req.user!._id;
+    const isAdmin = req.user!.role === 'admin';
+
+    if (!sourceDate || !DATE_RE.test(sourceDate)) {
+      res.status(400).json({ success: false, message: 'Valid sourceDate is required' });
+      return;
+    }
+    if (!Array.isArray(targetDates) || targetDates.length === 0) {
+      res.status(400).json({ success: false, message: 'targetDates array is required' });
+      return;
+    }
+
+    // Fetch source entry
+    const sourceEntry = await Entry.findOne({ userId, date: sourceDate });
+
+    const allowedTargets = filterAllowedDates(targetDates, isAdmin);
+    const results: { date: string; success: boolean; message?: string }[] = [];
+
+    for (const date of allowedTargets) {
+      try {
+        if (!sourceEntry) {
+          // Source is WFH — clear targets
+          await Entry.findOneAndDelete({ userId, date });
+          results.push({ date, success: true, message: 'cleared (source is WFH)' });
+        } else {
+          const updateData: Record<string, unknown> = {
+            userId,
+            date,
+            status: sourceEntry.status,
+            note: sourceEntry.note || undefined,
+            startTime: sourceEntry.startTime || undefined,
+            endTime: sourceEntry.endTime || undefined,
+          };
+          const unsetFields: Record<string, 1> = {};
+          if (!sourceEntry.startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
+          if (!sourceEntry.note) { unsetFields.note = 1; }
+
+          const updateOp: Record<string, unknown> = { $set: updateData };
+          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+
+          await Entry.findOneAndUpdate(
+            { userId, date },
+            updateOp,
+            { upsert: true, new: true, runValidators: true }
+          );
+          results.push({ date, success: true });
+        }
+      } catch (err: any) {
+        results.push({ date, success: false, message: err.message });
+      }
+    }
+
+    const skipped = targetDates.filter((d: string) => !allowedTargets.includes(d));
+    skipped.forEach((d: string) => results.push({ date: d, success: false, message: 'Outside allowed range' }));
+
+    res.json({
+      success: true,
+      data: {
+        sourceDate,
+        sourceStatus: sourceEntry?.status || 'wfh',
+        processed: results.filter((r) => r.success).length,
+        skipped: results.filter((r) => !r.success).length,
+        results,
+      },
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Repeat a pattern across a date range for specific days of week.
+ * POST /api/entries/repeat
+ * Body: { status, daysOfWeek: number[], startDate, endDate, note?, startTime?, endTime? }
+ */
+export const repeatPattern = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { status, daysOfWeek, startDate, endDate, note, startTime, endTime } = req.body;
+    const userId = req.user!._id;
+    const isAdmin = req.user!.role === 'admin';
+
+    if (!['office', 'leave', 'clear'].includes(status)) {
+      res.status(400).json({ success: false, message: 'Status must be "office", "leave", or "clear"' });
+      return;
+    }
+    if (!Array.isArray(daysOfWeek) || daysOfWeek.length === 0) {
+      res.status(400).json({ success: false, message: 'daysOfWeek array is required (0=Sun, 6=Sat)' });
+      return;
+    }
+    if (!startDate || !DATE_RE.test(startDate) || !endDate || !DATE_RE.test(endDate)) {
+      res.status(400).json({ success: false, message: 'Valid startDate and endDate are required' });
+      return;
+    }
+    if (endDate < startDate) {
+      res.status(400).json({ success: false, message: 'endDate must be >= startDate' });
+      return;
+    }
+
+    // Cap end date at 90 days from today for non-admins
+    const maxDate = isAdmin ? endDate : getFutureDateString(90);
+    const effectiveEndDate = endDate > maxDate ? maxDate : endDate;
+
+    // Validate time window
+    const timeErr = validateTimeWindow(startTime, endTime);
+    if (timeErr && status !== 'clear') {
+      res.status(400).json({ success: false, message: timeErr });
+      return;
+    }
+
+    // Generate matching dates
+    const dates: string[] = [];
+    const current = new Date(startDate + 'T00:00:00');
+    const end = new Date(effectiveEndDate + 'T00:00:00');
+
+    while (current <= end) {
+      const dayOfWeek = current.getDay();
+      if (daysOfWeek.includes(dayOfWeek)) {
+        const dateStr = current.toISOString().split('T')[0];
+        dates.push(dateStr);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+
+    const allowedDates = filterAllowedDates(dates, isAdmin);
+    const results: { date: string; success: boolean; message?: string }[] = [];
+
+    for (const date of allowedDates) {
+      try {
+        if (status === 'clear') {
+          await Entry.findOneAndDelete({ userId, date });
+          results.push({ date, success: true, message: 'cleared' });
+        } else {
+          const updateData: Record<string, unknown> = {
+            userId,
+            date,
+            status,
+            note: note ? sanitizeText(note) : undefined,
+            startTime: startTime || undefined,
+            endTime: endTime || undefined,
+          };
+          const unsetFields: Record<string, 1> = {};
+          if (!startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
+          if (!note) { unsetFields.note = 1; }
+
+          const updateOp: Record<string, unknown> = { $set: updateData };
+          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+
+          await Entry.findOneAndUpdate(
+            { userId, date },
+            updateOp,
+            { upsert: true, new: true, runValidators: true }
+          );
+          results.push({ date, success: true });
+        }
+      } catch (err: any) {
+        results.push({ date, success: false, message: err.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        processed: results.filter((r) => r.success).length,
+        skipped: results.filter((r) => !r.success).length,
+        results,
+      },
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Copy a date range to another date range (e.g. copy last week to this week).
+ * POST /api/entries/copy-range
+ * Body: { sourceStart, sourceEnd, targetStart }
+ */
+export const copyRange = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { sourceStart, sourceEnd, targetStart } = req.body;
+    const userId = req.user!._id;
+    const isAdmin = req.user!.role === 'admin';
+
+    if (!sourceStart || !sourceEnd || !targetStart) {
+      res.status(400).json({ success: false, message: 'sourceStart, sourceEnd, and targetStart are required' });
+      return;
+    }
+    if (!DATE_RE.test(sourceStart) || !DATE_RE.test(sourceEnd) || !DATE_RE.test(targetStart)) {
+      res.status(400).json({ success: false, message: 'All dates must be in YYYY-MM-DD format' });
+      return;
+    }
+
+    // Fetch source entries
+    const sourceEntries = await Entry.find({
+      userId,
+      date: { $gte: sourceStart, $lte: sourceEnd },
+    });
+
+    const sourceMap: Record<string, typeof sourceEntries[0]> = {};
+    sourceEntries.forEach((e) => { sourceMap[e.date] = e; });
+
+    // Calculate offset in days
+    const srcStartDate = new Date(sourceStart + 'T00:00:00');
+    const tgtStartDate = new Date(targetStart + 'T00:00:00');
+    const offsetMs = tgtStartDate.getTime() - srcStartDate.getTime();
+
+    // Generate source date range
+    const current = new Date(sourceStart + 'T00:00:00');
+    const end = new Date(sourceEnd + 'T00:00:00');
+    const results: { date: string; success: boolean; message?: string }[] = [];
+
+    while (current <= end) {
+      const srcDateStr = current.toISOString().split('T')[0];
+      const targetDate = new Date(current.getTime() + offsetMs);
+      const tgtDateStr = targetDate.toISOString().split('T')[0];
+
+      // Check allowed
+      if ((!isAdmin && isPastDate(tgtDateStr)) || (!isAdmin && !isWithinPlanningWindow(tgtDateStr))) {
+        results.push({ date: tgtDateStr, success: false, message: 'Outside allowed range' });
+        current.setDate(current.getDate() + 1);
+        continue;
+      }
+
+      try {
+        const sourceEntry = sourceMap[srcDateStr];
+        if (!sourceEntry) {
+          await Entry.findOneAndDelete({ userId, date: tgtDateStr });
+          results.push({ date: tgtDateStr, success: true, message: 'cleared (source WFH)' });
+        } else {
+          const updateData: Record<string, unknown> = {
+            userId,
+            date: tgtDateStr,
+            status: sourceEntry.status,
+            note: sourceEntry.note || undefined,
+            startTime: sourceEntry.startTime || undefined,
+            endTime: sourceEntry.endTime || undefined,
+          };
+          const unsetFields: Record<string, 1> = {};
+          if (!sourceEntry.startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
+          if (!sourceEntry.note) { unsetFields.note = 1; }
+
+          const updateOp: Record<string, unknown> = { $set: updateData };
+          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+
+          await Entry.findOneAndUpdate(
+            { userId, date: tgtDateStr },
+            updateOp,
+            { upsert: true, new: true, runValidators: true }
+          );
+          results.push({ date: tgtDateStr, success: true });
+        }
+      } catch (err: any) {
+        results.push({ date: tgtDateStr, success: false, message: err.message });
+      }
+
+      current.setDate(current.getDate() + 1);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        processed: results.filter((r) => r.success).length,
+        skipped: results.filter((r) => !r.success).length,
+        results,
+      },
+    });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Get team availability summary for a month.
+ * GET /api/entries/team-summary?month=YYYY-MM
+ */
+export const getTeamSummary = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { month } = req.query as { month?: string };
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      res.status(400).json({ success: false, message: 'month query param is required in YYYY-MM format' });
+      return;
+    }
+
+    const { startDate, endDate } = getMonthRange(month);
+
+    const users = await User.find({ isActive: true }).select('_id');
+    const totalMembers = users.length;
+    const userIds = users.map((u) => u._id);
+
+    const entries = await Entry.find({
+      date: { $gte: startDate, $lte: endDate },
+      userId: { $in: userIds },
+    });
+
+    // Build summary per date
+    const summary: Record<string, { office: number; leave: number; wfh: number; total: number }> = {};
+
+    // Init all dates
+    const [year, mo] = month.split('-').map(Number);
+    const daysCount = new Date(year, mo, 0).getDate();
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = `${year}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      summary[dateStr] = { office: 0, leave: 0, wfh: totalMembers, total: totalMembers };
+    }
+
+    // Tally entries
+    entries.forEach((e) => {
+      if (!summary[e.date]) return;
+      if (e.status === 'office') {
+        summary[e.date].office++;
+        summary[e.date].wfh--;
+      } else if (e.status === 'leave') {
+        summary[e.date].leave++;
+        summary[e.date].wfh--;
+      }
+    });
+
+    res.json({ success: true, data: summary });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

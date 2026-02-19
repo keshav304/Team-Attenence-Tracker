@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { entryApi, holidayApi } from '../api';
 import { useAuth } from '../context/AuthContext';
-import type { TeamMemberData, Holiday, StatusType, EntryDetail } from '../types';
+import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary } from '../types';
 import {
   getCurrentMonth,
   offsetMonth,
@@ -27,7 +27,6 @@ const STATUS_STYLES: Record<string, { bg: string; label: string; emoji: string }
 interface EditCellState {
   userId: string;
   date: string;
-  // form fields for the popover
   status: StatusType | 'wfh';
   note: string;
   startTime: string;
@@ -43,14 +42,18 @@ const TeamCalendarPage: React.FC = () => {
   const [editCell, setEditCell] = useState<EditCellState | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Availability summary per date
+  const [summary, setSummary] = useState<Record<string, DaySummary>>({});
+
   const days = getDaysInMonth(month);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [teamRes, holidayRes] = await Promise.all([
+      const [teamRes, holidayRes, summaryRes] = await Promise.all([
         entryApi.getTeamEntries(month),
         holidayApi.getHolidays(days[0], days[days.length - 1]),
+        entryApi.getTeamSummary(month),
       ]);
       setTeam(teamRes.data.data?.team || []);
 
@@ -59,6 +62,7 @@ const TeamCalendarPage: React.FC = () => {
         hMap[h.date] = h.name;
       });
       setHolidays(hMap);
+      setSummary(summaryRes.data.data || {});
     } catch {
       toast.error('Failed to load team data');
     } finally {
@@ -101,7 +105,6 @@ const TeamCalendarPage: React.FC = () => {
     if (!editCell) return;
     const { userId, date, status, note, startTime, endTime } = editCell;
 
-    // Validate time
     if ((startTime && !endTime) || (!startTime && endTime)) {
       toast.error('Provide both start and end time, or leave both empty');
       return;
@@ -109,6 +112,11 @@ const TeamCalendarPage: React.FC = () => {
     if (startTime && endTime && endTime <= startTime) {
       toast.error('End time must be after start time');
       return;
+    }
+
+    // Conflict warnings
+    if (status === 'leave' && holidays[date]) {
+      toast('This date is already a holiday', { icon: '⚠️' });
     }
 
     setSaving(true);
@@ -152,6 +160,22 @@ const TeamCalendarPage: React.FC = () => {
           return { ...m, entries: newEntries };
         })
       );
+
+      // Update summary locally
+      setSummary((prev) => {
+        const copy = { ...prev };
+        if (copy[date]) {
+          // Recalculate — simpler to just refetch, but let's approximate
+          const oldStatus = team.find((m) => m.user._id === userId)?.entries[date]?.status;
+          if (oldStatus === 'office') copy[date] = { ...copy[date], office: copy[date].office - 1, wfh: copy[date].wfh + 1 };
+          else if (oldStatus === 'leave') copy[date] = { ...copy[date], leave: copy[date].leave - 1, wfh: copy[date].wfh + 1 };
+
+          if (status === 'office') copy[date] = { ...copy[date], office: copy[date].office + 1, wfh: copy[date].wfh - 1 };
+          else if (status === 'leave') copy[date] = { ...copy[date], leave: copy[date].leave + 1, wfh: copy[date].wfh - 1 };
+        }
+        return copy;
+      });
+
       setEditCell(null);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to update');
@@ -168,6 +192,13 @@ const TeamCalendarPage: React.FC = () => {
     if (entry.startTime && entry.endTime) parts.push(`⏰ ${entry.startTime}–${entry.endTime}`);
     if (entry.note) parts.push(`📝 ${entry.note}`);
     return parts.join(' · ');
+  };
+
+  /** Build summary tooltip for a column header */
+  const buildSummaryTooltip = (date: string): string => {
+    const s = summary[date];
+    if (!s) return '';
+    return `🏢 ${s.office} in office · 🌴 ${s.leave} on leave · 🏠 ${s.wfh} WFH`;
   };
 
   return (
@@ -223,6 +254,43 @@ const TeamCalendarPage: React.FC = () => {
         <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200">
           <table className="w-full text-sm">
             <thead>
+              {/* ─── Availability summary row ──────── */}
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="sticky left-0 bg-gray-50 z-10 px-3 py-1.5 text-left text-[10px] font-semibold text-gray-500 min-w-[140px] border-r border-gray-200">
+                  Availability
+                </th>
+                {days.map((date) => {
+                  const weekend = isWeekend(date);
+                  const isHoliday = !!holidays[date];
+                  const s = summary[date];
+                  return (
+                    <th
+                      key={`sum-${date}`}
+                      className={`px-0.5 py-1 text-center ${weekend || isHoliday ? 'bg-gray-100' : ''}`}
+                      title={buildSummaryTooltip(date)}
+                    >
+                      {!weekend && !isHoliday && s && (
+                        <div className="flex flex-col items-center gap-px">
+                          <span className="text-[8px] font-bold text-blue-600" title={`${s.office} in office`}>
+                            {s.office > 0 ? s.office : ''}
+                          </span>
+                          <span className="text-[8px] font-bold text-orange-500" title={`${s.leave} on leave`}>
+                            {s.leave > 0 ? s.leave : ''}
+                          </span>
+                          <span className="text-[8px] text-green-500" title={`${s.wfh} WFH`}>
+                            {s.wfh > 0 ? s.wfh : ''}
+                          </span>
+                        </div>
+                      )}
+                      {isHoliday && !weekend && (
+                        <span className="text-[8px]">🎉</span>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+
+              {/* ─── Day headers ────────────────────── */}
               <tr className="bg-gray-50">
                 <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2 text-left font-semibold text-gray-700 min-w-[140px] border-r border-gray-200">
                   Team Member
@@ -283,6 +351,10 @@ const TeamCalendarPage: React.FC = () => {
                       const hasTime = entry?.startTime && entry?.endTime;
                       const hasNote = !!entry?.note;
 
+                      // Conflict indicators
+                      const isLeaveOnHoliday = entry?.status === 'leave' && holidays[date];
+                      const hasTimeOnLeave = entry?.status === 'leave' && hasTime;
+
                       return (
                         <td
                           key={date}
@@ -314,6 +386,14 @@ const TeamCalendarPage: React.FC = () => {
                                   {hasNote && <span className="text-[7px]">📝</span>}
                                 </span>
                               )}
+                              {/* Conflict: leave on holiday */}
+                              {isLeaveOnHoliday && (
+                                <span className="absolute -bottom-1 -left-1 text-[7px] bg-amber-200 rounded-full px-0.5">⚠️</span>
+                              )}
+                              {/* Conflict: time on leave */}
+                              {hasTimeOnLeave && (
+                                <span className="absolute -bottom-1 -right-1 text-[7px] bg-amber-200 rounded-full px-0.5">⚠️</span>
+                              )}
                             </div>
                           )}
 
@@ -323,6 +403,13 @@ const TeamCalendarPage: React.FC = () => {
                               className="absolute z-20 top-full left-1/2 -translate-x-1/2 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-3 flex flex-col gap-2 min-w-[260px] text-left"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              {/* Conflict warnings in popover */}
+                              {holidays[editCell.date] && (
+                                <div className="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded">
+                                  ⚠️ This is a holiday: {holidays[editCell.date]}
+                                </div>
+                              )}
+
                               {/* Status buttons */}
                               <div className="flex gap-1">
                                 {([
@@ -343,6 +430,13 @@ const TeamCalendarPage: React.FC = () => {
                                   </button>
                                 ))}
                               </div>
+
+                              {/* Leave + time warning */}
+                              {editCell.status === 'leave' && (editCell.startTime || editCell.endTime) && (
+                                <div className="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded">
+                                  ⚠️ Time window on leave is unusual
+                                </div>
+                              )}
 
                               {/* Time inputs */}
                               <div className="flex items-center gap-1">
@@ -370,6 +464,13 @@ const TeamCalendarPage: React.FC = () => {
                                 )}
                               </div>
 
+                              {/* Time validation warning */}
+                              {editCell.startTime && editCell.endTime && editCell.endTime <= editCell.startTime && (
+                                <div className="text-[10px] text-red-500">
+                                  ⚠️ End time must be after start time
+                                </div>
+                              )}
+
                               {/* Note */}
                               <textarea
                                 value={editCell.note}
@@ -380,6 +481,13 @@ const TeamCalendarPage: React.FC = () => {
                                 className="w-full px-2 py-1 border border-gray-200 rounded text-xs resize-none"
                                 placeholder="Note (optional, max 500)"
                               />
+
+                              {/* Overwrite warning */}
+                              {member.entries[date] && (
+                                <div className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded">
+                                  ℹ️ Will overwrite existing: {member.entries[date].status}
+                                </div>
+                              )}
 
                               {/* Actions */}
                               <div className="flex justify-between items-center">
@@ -419,7 +527,8 @@ const TeamCalendarPage: React.FC = () => {
       {!loading && (
         <div className="mt-4 text-xs text-gray-500">
           Showing {team.length} team members · {days.length} days ·
-          Click a cell to change status, set hours &amp; add notes
+          Click a cell to change status, set hours &amp; add notes ·
+          Top row shows daily office/leave/WFH counts
         </div>
       )}
     </div>

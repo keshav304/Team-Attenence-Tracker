@@ -59,3 +59,80 @@ export interface ApiResponse<T = unknown> {
   message?: string;
   data?: T;
 }
+
+// ─── Templates ───────────────────────────────
+export interface Template {
+  _id: string;
+  userId: string;
+  name: string;
+  status: StatusType;
+  startTime?: string;
+  endTime?: string;
+  note?: string;
+}
+
+// ─── Bulk Operation Results ──────────────────
+export interface BulkResultItem {
+  date: string;
+  success: boolean;
+  message?: string;
+}
+
+export interface BulkResult {
+  processed: number;
+  skipped: number;
+  results: BulkResultItem[];
+}
+
+export interface CopyResult extends BulkResult {
+  sourceDate: string;
+  sourceStatus: string;
+}
+
+// ─── Team Summary ────────────────────────────
+export interface DaySummary {
+  office: number;
+  leave: number;
+  wfh: number;
+  total: number;
+}
+
+export type TeamSummary = Record<string, DaySummary>;
+
+// ─── Insights / Analytics ────────────────────
+export interface EmployeeInsight {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  totalWorkingDays: number;
+  officeDays: number;
+  leaveDays: number;
+  wfhDays: number;
+  partialDays: number;
+  notesCount: number;
+  officePercent: number;
+  leavePercent: number;
+  wfhPercent: number;
+}
+
+export interface TeamAggregate {
+  totalEmployees: number;
+  totalOfficeDays: number;
+  totalLeaveDays: number;
+  totalWfhDays: number;
+  avgOfficePerDay: number;
+  mostPopularDay: string;
+  leastPopularDay: string;
+  officeDayDistribution: { day: string; count: number }[];
+}
+
+export interface InsightsResponse {
+  month: number;
+  year: number;
+  totalWorkingDays: number;
+  holidays: { date: string; name: string }[];
+  team: TeamAggregate;
+  employees: EmployeeInsight[];
+  dailyOfficeTrend: { date: string; count: number }[];
+}

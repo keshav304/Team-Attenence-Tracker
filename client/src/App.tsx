@@ -7,6 +7,7 @@ import TeamCalendarPage from './pages/TeamCalendarPage';
 import MyCalendarPage from './pages/MyCalendarPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminHolidaysPage from './pages/AdminHolidaysPage';
+import InsightsPage from './pages/InsightsPage';
 import ProfilePage from './pages/ProfilePage';
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
           <>
             <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/admin/holidays" element={<AdminHolidaysPage />} />
+            <Route path="/admin/insights" element={<InsightsPage />} />
           </>
         )}
         <Route path="*" element={<Navigate to="/" replace />} />
