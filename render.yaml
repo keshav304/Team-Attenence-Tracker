@@ -17,7 +17,7 @@ services:
       - key: JWT_EXPIRES_IN
         value: 7d
       - key: CLIENT_URL
-        value: https://dhsync.onrender.com  # update after the static site deploys
+        value: https://dhsync.vercel.app  # update after the static site deploys
 
   # ── Frontend (Static Site) ──────────────────────────
   - type: web
