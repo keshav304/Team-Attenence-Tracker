@@ -28,6 +28,7 @@ const InsightsPage: React.FC = () => {
   const [year, setYear] = useState(currentYear);
   const [data, setData] = useState<InsightsResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -96,14 +97,14 @@ const InsightsPage: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">📊 Insights &amp; Analytics</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">📊 Insights &amp; Analytics</h1>
 
         <div className="flex items-center gap-2">
-          <button onClick={goPrev} className="px-2 py-1 rounded bg-gray-200 hover:bg-gray-300 text-sm">◀</button>
+          <button onClick={goPrev} className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">◀</button>
           <select
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
-            className="border rounded px-2 py-1 text-sm"
+            className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           >
             {MONTH_NAMES.map((m, i) => (
               <option key={i} value={i + 1}>{m}</option>
@@ -112,13 +113,47 @@ const InsightsPage: React.FC = () => {
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="border rounded px-2 py-1 text-sm"
+            className="border dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           >
             {yearOpts.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <button onClick={goNext} className="px-2 py-1 rounded bg-gray-200 hover:bg-gray-300 text-sm">▶</button>
+          <button onClick={goNext} className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">▶</button>
+
+          {/* Export CSV */}
+          <button
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const res = await insightsApi.exportCsv(month, year);
+                const url = window.URL.createObjectURL(new Blob([res.data]));
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `attendance-${MONTH_NAMES[month - 1]}-${year}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                toast.success('CSV exported');
+              } catch {
+                toast.error('Failed to export CSV');
+              } finally {
+                setExporting(false);
+              }
+            }}
+            disabled={exporting || loading}
+            className="ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          >
+            {exporting ? (
+              <>
+                <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full" />
+                Exporting…
+              </>
+            ) : (
+              '📥 Export CSV'
+            )}
+          </button>
         </div>
       </div>
 
@@ -143,19 +178,19 @@ const InsightsPage: React.FC = () => {
           </div>
 
           {/* ─── Day-of-Week Distribution ──────── */}
-          <section className="bg-white rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-3">Office Day Distribution (by weekday)</h2>
+          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 transition-colors">
+            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Office Day Distribution (by weekday)</h2>
             <div className="flex items-end gap-3 h-40">
               {data.team.officeDayDistribution.map((d) => {
                 const maxDist = Math.max(...data.team.officeDayDistribution.map((x) => x.count), 1);
                 const pct = (d.count / maxDist) * 100;
                 return (
                   <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-xs font-medium text-gray-700">{d.count}</span>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{d.count}</span>
                     <div className="w-full bg-primary-100 rounded-t" style={{ height: `${pct}%`, minHeight: 4 }}>
                       <div className="w-full h-full bg-primary-500 rounded-t" />
                     </div>
-                    <span className="text-xs text-gray-500">{d.day.slice(0, 3)}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{d.day.slice(0, 3)}</span>
                   </div>
                 );
               })}
@@ -163,21 +198,21 @@ const InsightsPage: React.FC = () => {
           </section>
 
           {/* ─── Daily Office Trend ────────────── */}
-          <section className="bg-white rounded-lg shadow p-4">
-            <h2 className="text-lg font-semibold mb-3">Daily Office Attendance Trend</h2>
+          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 transition-colors">
+            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Daily Office Attendance Trend</h2>
             <div className="flex items-end gap-px h-32 overflow-x-auto">
               {data.dailyOfficeTrend.map((d) => {
                 const pct = (d.count / maxTrend) * 100;
                 const dayNum = d.date.split('-')[2];
                 return (
                   <div key={d.date} className="flex flex-col items-center flex-shrink-0" style={{ width: 22 }}>
-                    <span className="text-[10px] text-gray-500">{d.count}</span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">{d.count}</span>
                     <div
                       className="w-3.5 bg-primary-400 rounded-t"
                       style={{ height: `${pct}%`, minHeight: 2 }}
                       title={`${d.date}: ${d.count} in office`}
                     />
-                    <span className="text-[10px] text-gray-400 mt-0.5">{dayNum}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{dayNum}</span>
                   </div>
                 );
               })}
@@ -186,15 +221,15 @@ const InsightsPage: React.FC = () => {
 
           {/* ─── Holidays this month ───────────── */}
           {data.holidays.length > 0 && (
-            <section className="bg-white rounded-lg shadow p-4">
-              <h2 className="text-lg font-semibold mb-2">Holidays This Month</h2>
+            <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 transition-colors">
+              <h2 className="text-lg font-semibold mb-2 text-gray-900 dark:text-gray-100">Holidays This Month</h2>
               <div className="flex flex-wrap gap-2">
                 {data.holidays.map((h) => (
                   <span
                     key={h.date}
-                    className="inline-flex items-center gap-1 bg-red-50 text-red-700 text-sm px-3 py-1 rounded-full"
+                    className="inline-flex items-center gap-1 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm px-3 py-1 rounded-full"
                   >
-                    📌 {h.name} <span className="text-red-400 text-xs">({h.date})</span>
+                    📌 {h.name} <span className="text-red-400 dark:text-red-500 text-xs">({h.date})</span>
                   </span>
                 ))}
               </div>
@@ -202,11 +237,11 @@ const InsightsPage: React.FC = () => {
           )}
 
           {/* ─── Employee Metrics Table ─────────── */}
-          <section className="bg-white rounded-lg shadow overflow-hidden">
-            <h2 className="text-lg font-semibold p-4 border-b">Per-Employee Breakdown</h2>
+          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 overflow-hidden transition-colors">
+            <h2 className="text-lg font-semibold p-4 border-b dark:border-gray-700 text-gray-900 dark:text-gray-100">Per-Employee Breakdown</h2>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-left">
+                <thead className="bg-gray-50 dark:bg-gray-700/50 text-left">
                   <tr>
                     {([
                       ['name', 'Name'],
@@ -222,21 +257,21 @@ const InsightsPage: React.FC = () => {
                     ] as [SortKey, string][]).map(([key, label]) => (
                       <th
                         key={key}
-                        className="px-4 py-2 font-medium text-gray-700 cursor-pointer hover:bg-gray-100 select-none whitespace-nowrap"
+                        className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none whitespace-nowrap"
                         onClick={() => toggleSort(key)}
                       >
-                        {label} <span className="text-xs text-gray-400">{sortIcon(key)}</span>
+                        {label} <span className="text-xs text-gray-400 dark:text-gray-500">{sortIcon(key)}</span>
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {sorted.map((emp) => (
-                    <tr key={emp.userId} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">
+                    <tr key={emp.userId} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
                         {emp.name}
                         {emp.role === 'admin' && (
-                          <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded">A</span>
+                          <span className="ml-1 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded">A</span>
                         )}
                       </td>
                       <td className="px-4 py-2 text-center">{emp.officeDays}</td>
@@ -249,14 +284,14 @@ const InsightsPage: React.FC = () => {
                         {emp.leavePercent}%
                       </td>
                       <td className="px-4 py-2 text-center">{emp.wfhPercent}%</td>
-                      <td className="px-4 py-2 text-center text-gray-500">{emp.partialDays}</td>
-                      <td className="px-4 py-2 text-center text-gray-500">{emp.notesCount}</td>
-                      <td className="px-4 py-2 text-center text-gray-500">{emp.totalWorkingDays}</td>
+                      <td className="px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.partialDays}</td>
+                      <td className="px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.notesCount}</td>
+                      <td className="px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.totalWorkingDays}</td>
                     </tr>
                   ))}
                   {sorted.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="text-center py-8 text-gray-400">No employee data for this month</td>
+                      <td colSpan={10} className="text-center py-8 text-gray-400 dark:text-gray-500">No employee data for this month</td>
                     </tr>
                   )}
                 </tbody>
@@ -271,11 +306,11 @@ const InsightsPage: React.FC = () => {
 
 /* ─── Card sub-component ────────────────────── */
 const Card: React.FC<{ label: string; value: string | number; icon: string }> = ({ label, value, icon }) => (
-  <div className="bg-white rounded-lg shadow p-4 flex items-center gap-3">
+  <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 flex items-center gap-3 transition-colors">
     <span className="text-2xl">{icon}</span>
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-xl font-bold text-gray-900">{value}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
     </div>
   </div>
 );

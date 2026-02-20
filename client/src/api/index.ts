@@ -11,6 +11,8 @@ import type {
   CopyResult,
   TeamSummary,
   InsightsResponse,
+  UserInsightsResponse,
+  TodayStatusResponse,
 } from '../types';
 
 // ─── Auth ────────────────────────────────────
@@ -122,4 +124,19 @@ export const templateApi = {
 export const insightsApi = {
   getInsights: (month: number, year: number) =>
     api.get<ApiResponse<InsightsResponse>>('/insights', { params: { month, year } }),
+
+  getUserInsights: (userId: string, month: number, year: number) =>
+    api.get<ApiResponse<UserInsightsResponse>>(`/insights/user/${userId}`, { params: { month, year } }),
+
+  exportCsv: (month: number, year: number) =>
+    api.get<Blob>('/insights/export', {
+      params: { month, year },
+      responseType: 'blob',
+    }),
+};
+
+// ─── Status ──────────────────────────────────
+export const statusApi = {
+  getToday: () =>
+    api.get<ApiResponse<TodayStatusResponse>>('/status/today'),
 };

@@ -13,6 +13,7 @@ import {
   getDayNumber,
   canMemberEdit,
   getDayOfWeek,
+  getLockedReason,
 } from '../utils/date';
 import toast from 'react-hot-toast';
 import {
@@ -206,34 +207,34 @@ const MyCalendarPage: React.FC = () => {
 
   const getStatusInfo = (date: string) => {
     if (isWeekend(date))
-      return { label: '', bg: 'bg-gray-100', emoji: '', textColor: 'text-gray-300' };
+      return { label: '', bg: 'bg-gray-100 dark:bg-gray-800', emoji: '', textColor: 'text-gray-300 dark:text-gray-600' };
     if (holidays[date])
       return {
         label: holidays[date],
-        bg: 'bg-purple-50 border-purple-200',
+        bg: 'bg-purple-50 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800',
         emoji: '🎉',
-        textColor: 'text-purple-600',
+        textColor: 'text-purple-600 dark:text-purple-400',
       };
     const status = entries[date]?.status || 'wfh';
     if (status === 'office')
       return {
         label: 'Office',
-        bg: 'bg-blue-50 border-blue-200',
+        bg: 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800',
         emoji: '🏢',
-        textColor: 'text-blue-700',
+        textColor: 'text-blue-700 dark:text-blue-400',
       };
     if (status === 'leave')
       return {
         label: 'Leave',
-        bg: 'bg-orange-50 border-orange-200',
+        bg: 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800',
         emoji: '🌴',
-        textColor: 'text-orange-700',
+        textColor: 'text-orange-700 dark:text-orange-400',
       };
     return {
       label: 'WFH',
-      bg: 'bg-green-50/50 border-gray-200',
+      bg: 'bg-green-50/50 dark:bg-green-900/20 border-gray-200 dark:border-gray-700',
       emoji: '🏠',
-      textColor: 'text-green-600',
+      textColor: 'text-green-600 dark:text-green-400',
     };
   };
 
@@ -258,11 +259,11 @@ const MyCalendarPage: React.FC = () => {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">My Calendar</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Calendar</h1>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMonth(offsetMonth(month, -1))}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
           >
             ◀
           </button>
@@ -271,13 +272,13 @@ const MyCalendarPage: React.FC = () => {
           </span>
           <button
             onClick={() => setMonth(offsetMonth(month, 1))}
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
           >
             ▶
           </button>
           <button
             onClick={() => setMonth(getCurrentMonth())}
-            className="ml-2 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
+            className="ml-2 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg"
           >
             Today
           </button>
@@ -286,43 +287,43 @@ const MyCalendarPage: React.FC = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3 mb-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
           <div className="text-2xl font-bold text-blue-600">{officeDays}</div>
-          <div className="text-xs text-gray-500 mt-1">🏢 Office</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">🏢 Office</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
           <div className="text-2xl font-bold text-green-600">{wfhDays}</div>
-          <div className="text-xs text-gray-500 mt-1">🏠 WFH</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">🏠 WFH</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
           <div className="text-2xl font-bold text-orange-600">{leaveDays}</div>
-          <div className="text-xs text-gray-500 mt-1">🌴 Leave</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">🌴 Leave</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-          <div className="text-2xl font-bold text-gray-700">{workingDays}</div>
-          <div className="text-xs text-gray-500 mt-1">Working Days</div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
+          <div className="text-2xl font-bold text-gray-700 dark:text-gray-300">{workingDays}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Working Days</div>
         </div>
       </div>
 
       {/* ─── Action Toolbar ───────────────────── */}
       <div className="flex flex-wrap gap-2 mb-4">
         <button onClick={() => setShowRepeatModal(true)}
-          className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">
+          className="px-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
           🔄 Repeat Pattern
         </button>
         <button onClick={() => setShowCopyRangeModal(true)}
-          className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">
+          className="px-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
           ⚡ Copy Week/Month
         </button>
         {selectedDates.length > 0 && (
           <button onClick={() => setShowCopyModal(true)}
-            className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 font-medium">
+            className="px-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
             📋 Copy From Date → {selectedDates.length} selected
           </button>
         )}
         {selectedDates.length > 0 && (
           <button onClick={() => setSelectedDates([])}
-            className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-600">
+            className="px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
             Clear selection
           </button>
         )}
@@ -345,13 +346,13 @@ const MyCalendarPage: React.FC = () => {
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4" ref={calendarRef}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 transition-colors" ref={calendarRef}>
               {/* Weekday headers */}
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {WEEKDAY_NAMES.map((name) => (
                   <div
                     key={name}
-                    className="text-center text-xs font-semibold text-gray-500 py-1"
+                    className="text-center text-xs font-semibold text-gray-500 dark:text-gray-400 py-1"
                   >
                     {name}
                   </div>
@@ -371,6 +372,9 @@ const MyCalendarPage: React.FC = () => {
                   const past = isPast(date);
                   const canEdit =
                     !weekend && !holidays[date] && (isAdmin || canMemberEdit(date));
+                  const lockedReason = (!isAdmin && !weekend && !holidays[date])
+                    ? getLockedReason(date)
+                    : null;
                   const dayData = entries[date];
                   const hasTime = dayData?.startTime && dayData?.endTime;
                   const hasNote = !!dayData?.note;
@@ -405,12 +409,15 @@ const MyCalendarPage: React.FC = () => {
                         ${info.bg}
                         ${today ? 'ring-2 ring-primary-400 ring-offset-1' : ''}
                         ${canEdit ? 'cursor-pointer hover:shadow-md' : ''}
-                        ${past && !isAdmin ? 'opacity-50' : ''}
+                        ${!canEdit && lockedReason ? 'opacity-50' : ''}
+                        ${!canEdit && !lockedReason && past && !isAdmin ? 'opacity-50' : ''}
                         ${weekend ? 'border-transparent' : ''}
                         ${isSelected ? 'ring-2 ring-indigo-400 ring-offset-1 shadow-md' : ''}
                       `}
                       title={
-                        holidays[date]
+                        lockedReason
+                          ? `🔒 ${lockedReason}`
+                          : holidays[date]
                           ? holidays[date]
                           : `${info.label}${hasTime ? ` (${dayData.startTime}–${dayData.endTime})` : ''}${hasNote ? ` — ${dayData.note}` : ''}`
                       }
@@ -429,7 +436,7 @@ const MyCalendarPage: React.FC = () => {
                             {holidays[date] ? holidays[date] : info.label}
                           </div>
                           {hasTime && (
-                            <div className="text-[9px] text-center text-gray-500 mt-0.5 leading-tight">
+                            <div className="text-[9px] text-center text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">
                               ⏰ {dayData.startTime}–{dayData.endTime}
                             </div>
                           )}
@@ -439,12 +446,12 @@ const MyCalendarPage: React.FC = () => {
                             </div>
                           )}
                           {isLeaveOnHoliday && (
-                            <div className="absolute bottom-0.5 left-0.5 text-[8px] bg-amber-100 text-amber-700 px-1 rounded">
+                            <div className="absolute bottom-0.5 left-0.5 text-[8px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1 rounded">
                               ⚠️
                             </div>
                           )}
                           {hasTimeOnLeave && (
-                            <div className="absolute bottom-0.5 right-0.5 text-[8px] bg-amber-100 text-amber-700 px-1 rounded">
+                            <div className="absolute bottom-0.5 right-0.5 text-[8px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1 rounded">
                               ⏰⚠️
                             </div>
                           )}
@@ -462,7 +469,7 @@ const MyCalendarPage: React.FC = () => {
             </div>
           )}
 
-          <p className="mt-3 text-xs text-gray-500">
+          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
             Click a date to edit · Drag to select range · Ctrl+Click for multi-select
           </p>
         </div>
@@ -498,36 +505,36 @@ const MyCalendarPage: React.FC = () => {
 
       {/* ─── Day Detail Modal ──────────────────── */}
       {editDate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={closeModal}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={closeModal}>
           <div
-            className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-bold text-gray-900 mb-1">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
               {formatDateLong(editDate)}
             </h2>
-            <p className="text-xs text-gray-500 mb-5">Set your status, hours &amp; note for this day</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">Set your status, hours &amp; note for this day</p>
 
             {/* Conflict warnings */}
             {holidays[editDate] && (
-              <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+              <div className="mb-3 px-3 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
                 ⚠️ This date is a holiday: {holidays[editDate]}
               </div>
             )}
             {entries[editDate] && (
-              <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+              <div className="mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-400">
                 ℹ️ This will overwrite the existing entry ({entries[editDate].status})
               </div>
             )}
 
             {/* Status Selector */}
             <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
               <div className="flex gap-2">
                 {([
-                  { value: 'office' as const, label: '🏢 Office', ring: 'ring-blue-400', bg: 'bg-blue-50' },
-                  { value: 'leave' as const, label: '🌴 Leave', ring: 'ring-orange-400', bg: 'bg-orange-50' },
-                  { value: 'wfh' as const, label: '🏠 WFH', ring: 'ring-green-400', bg: 'bg-green-50' },
+                  { value: 'office' as const, label: '🏢 Office', ring: 'ring-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30' },
+                  { value: 'leave' as const, label: '🌴 Leave', ring: 'ring-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/30' },
+                  { value: 'wfh' as const, label: '🏠 WFH', ring: 'ring-green-400', bg: 'bg-green-50 dark:bg-green-900/30' },
                 ] as const).map((opt) => (
                   <button
                     key={opt.value}
@@ -536,7 +543,7 @@ const MyCalendarPage: React.FC = () => {
                     className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
                       modalStatus === opt.value
                         ? `${opt.bg} ring-2 ${opt.ring} border-transparent`
-                        : 'bg-white border-gray-200 hover:bg-gray-50'
+                        : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                     }`}
                   >
                     {opt.label}
@@ -547,29 +554,29 @@ const MyCalendarPage: React.FC = () => {
 
             {/* Leave + time warning */}
             {modalStatus === 'leave' && (modalStartTime || modalEndTime) && (
-              <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+              <div className="mb-3 px-3 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
                 ⚠️ Setting a time window on a leave day is unusual
               </div>
             )}
 
             {/* Active Time Window */}
             <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Active Hours <span className="text-gray-400 font-normal">(optional, IST)</span>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Active Hours <span className="text-gray-400 dark:text-gray-500 font-normal">(optional, IST)</span>
               </label>
               <div className="flex items-center gap-2">
                 <input
                   type="time"
                   value={modalStartTime}
                   onChange={(e) => setModalStartTime(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <span className="text-gray-400 text-sm">to</span>
+                <span className="text-gray-400 dark:text-gray-500 text-sm">to</span>
                 <input
                   type="time"
                   value={modalEndTime}
                   onChange={(e) => setModalEndTime(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
                 {(modalStartTime || modalEndTime) && (
                   <button
@@ -589,17 +596,17 @@ const MyCalendarPage: React.FC = () => {
 
             {/* Note */}
             <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Note <span className="text-gray-400 font-normal">(optional, max 500 chars)</span>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Note <span className="text-gray-400 dark:text-gray-500 font-normal">(optional, max 500 chars)</span>
               </label>
               <textarea
                 value={modalNote}
                 onChange={(e) => setModalNote(e.target.value.slice(0, 500))}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                 placeholder="e.g. Doctor appointment, half day, late start…"
               />
-              <div className="text-right text-[10px] text-gray-400 mt-0.5">
+              <div className="text-right text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
                 {modalNote.length}/500
               </div>
             </div>
@@ -609,7 +616,7 @@ const MyCalendarPage: React.FC = () => {
               <button
                 type="button"
                 onClick={closeModal}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
               >
                 Cancel
               </button>

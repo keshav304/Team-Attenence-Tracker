@@ -8,6 +8,7 @@ import adminRoutes from './routes/adminRoutes';
 import holidayRoutes from './routes/holidayRoutes';
 import templateRoutes from './routes/templateRoutes';
 import insightsRoutes from './routes/insightsRoutes';
+import statusRoutes from './routes/statusRoutes';
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/holidays', holidayRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/insights', insightsRoutes);
+app.use('/api/status', statusRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

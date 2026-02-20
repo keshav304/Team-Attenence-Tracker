@@ -136,3 +136,64 @@ export interface InsightsResponse {
   employees: EmployeeInsight[];
   dailyOfficeTrend: { date: string; count: number }[];
 }
+
+// ─── Single User Insights ────────────────────
+export interface UserDayBreakdown {
+  date: string;
+  dayOfWeek: string;
+  isWeekend: boolean;
+  isHoliday: boolean;
+  holidayName?: string;
+  isBeforeJoin: boolean;
+  status: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined';
+  startTime?: string;
+  endTime?: string;
+  note?: string;
+}
+
+export interface UserInsightsSummary {
+  officeDays: number;
+  leaveDays: number;
+  wfhDays: number;
+  partialDays: number;
+  notesCount: number;
+  officePercent: number;
+  leavePercent: number;
+  wfhPercent: number;
+}
+
+export interface UserInsightsResponse {
+  month: number;
+  year: number;
+  user: Pick<User, '_id' | 'name' | 'email' | 'role'> & { isActive: boolean };
+  totalWorkingDays: number;
+  holidays: { date: string; name: string }[];
+  summary: UserInsightsSummary;
+  dailyBreakdown: UserDayBreakdown[];
+}
+
+// ─── Today Status ────────────────────────────
+export interface TodayStatusPerson {
+  _id: string;
+  name: string;
+  email: string;
+  startTime?: string;
+  endTime?: string;
+  note?: string;
+}
+
+export interface TodayStatusResponse {
+  date: string;
+  isWeekend: boolean;
+  isHoliday: boolean;
+  holidayName?: string;
+  counts: {
+    office: number;
+    leave: number;
+    wfh: number;
+    total: number;
+  };
+  office: TodayStatusPerson[];
+  leave: TodayStatusPerson[];
+  wfh: TodayStatusPerson[];
+}

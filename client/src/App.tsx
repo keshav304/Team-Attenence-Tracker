@@ -8,6 +8,7 @@ import MyCalendarPage from './pages/MyCalendarPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminHolidaysPage from './pages/AdminHolidaysPage';
 import InsightsPage from './pages/InsightsPage';
+import UserInsightsPage from './pages/UserInsightsPage';
 import ProfilePage from './pages/ProfilePage';
 
 function App() {
@@ -15,7 +16,7 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
       </div>
     );
@@ -42,6 +43,7 @@ function App() {
             <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/admin/holidays" element={<AdminHolidaysPage />} />
             <Route path="/admin/insights" element={<InsightsPage />} />
+            <Route path="/admin/user-insights" element={<UserInsightsPage />} />
           </>
         )}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -81,12 +81,12 @@ export const BulkActionToolbar: React.FC<
   if (selectedDates.length === 0) return null;
 
   return (
-    <div className="bg-white border border-primary-200 rounded-xl shadow-lg p-4 mb-4 animate-in slide-in-from-top">
+    <div className="bg-white dark:bg-gray-800 border border-primary-200 dark:border-primary-800 rounded-xl shadow-lg p-4 mb-4 animate-in slide-in-from-top transition-colors">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-gray-800">
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">
           Bulk Action — {selectedDates.length} date{selectedDates.length > 1 ? 's' : ''} selected
         </h3>
-        <button onClick={onClearSelection} className="text-xs text-gray-400 hover:text-gray-600">
+        <button onClick={onClearSelection} className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
           Clear selection
         </button>
       </div>
@@ -94,7 +94,7 @@ export const BulkActionToolbar: React.FC<
       <div className="flex flex-wrap gap-3 items-end">
         {/* Status */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Status</label>
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Status</label>
           <div className="flex gap-1">
             {(['office', 'leave', 'clear'] as const).map((s) => (
               <button
@@ -102,8 +102,8 @@ export const BulkActionToolbar: React.FC<
                 onClick={() => setStatus(s)}
                 className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
                   status === s
-                    ? 'bg-primary-50 border-primary-300 font-semibold'
-                    : 'bg-white border-gray-200 hover:bg-gray-50'
+                    ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 font-semibold'
+                    : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                 }`}
               >
                 {s === 'office' ? '🏢 Office' : s === 'leave' ? '🌴 Leave' : '🏠 Clear (WFH)'}
@@ -115,13 +115,13 @@ export const BulkActionToolbar: React.FC<
         {/* Time */}
         {status !== 'clear' && (
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Time (optional)</label>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Time (optional)</label>
             <div className="flex items-center gap-1">
               <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)}
-                className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs" />
-              <span className="text-xs text-gray-400">–</span>
+                className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+              <span className="text-xs text-gray-400 dark:text-gray-500">–</span>
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)}
-                className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs" />
+                className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
             </div>
           </div>
         )}
@@ -129,9 +129,9 @@ export const BulkActionToolbar: React.FC<
         {/* Note */}
         {status !== 'clear' && (
           <div className="flex-1 min-w-[150px]">
-            <label className="block text-xs text-gray-500 mb-1">Note (optional)</label>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Note (optional)</label>
             <input type="text" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))}
-              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
+              className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               placeholder="Note for all dates" />
           </div>
         )}
@@ -146,7 +146,7 @@ export const BulkActionToolbar: React.FC<
       {warnings.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {warnings.map((w, i) => (
-            <span key={i} className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
+            <span key={i} className="text-[10px] bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
               ⚠️ {w}
             </span>
           ))}
@@ -184,25 +184,25 @@ export const CopyFromDateModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 mb-4">Copy From Date</h2>
-        <p className="text-xs text-gray-500 mb-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 transition-colors" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Copy From Date</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Copy the status, time window, and note from a source date to {selectedDates.length} selected date(s).
         </p>
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Source Date</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source Date</label>
           <input type="date" value={sourceDate} onChange={(e) => setSourceDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Target Dates</label>
-          <div className="text-xs text-gray-500 max-h-20 overflow-y-auto">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Dates</label>
+          <div className="text-xs text-gray-500 dark:text-gray-400 max-h-20 overflow-y-auto">
             {selectedDates.sort().join(', ')}
           </div>
         </div>
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300">Cancel</button>
           <button onClick={handleCopy} disabled={loading || !sourceDate}
             className="px-5 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
             {loading ? 'Copying…' : 'Copy'}
@@ -260,21 +260,21 @@ export const RepeatPatternModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 mb-1">Repeat Pattern</h2>
-        <p className="text-xs text-gray-500 mb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Repeat Pattern</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           Apply a status to specific days of the week across a date range.
         </p>
 
         {/* Status */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
           <div className="flex gap-2">
             {(['office', 'leave', 'clear'] as const).map((s) => (
               <button key={s} onClick={() => setStatus(s)}
                 className={`flex-1 py-2 rounded-lg text-sm border transition-all ${
-                  status === s ? 'bg-primary-50 ring-2 ring-primary-400 border-transparent font-semibold' : 'bg-white border-gray-200 hover:bg-gray-50'
+                  status === s ? 'bg-primary-50 dark:bg-primary-900/30 ring-2 ring-primary-400 border-transparent font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                 }`}>
                 {s === 'office' ? '🏢 Office' : s === 'leave' ? '🌴 Leave' : '🏠 Clear'}
               </button>
@@ -284,15 +284,15 @@ export const RepeatPatternModal: React.FC<{
 
         {/* Days of week */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Days of Week</label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Days of Week</label>
           <div className="flex gap-1">
             {DAY_NAMES.map((name, i) => (
               <button key={i} onClick={() => toggleDay(i)}
                 className={`flex-1 py-2 rounded-lg text-xs border transition-all ${
                   daysOfWeek.includes(i)
-                    ? 'bg-primary-100 border-primary-300 font-semibold'
-                    : 'bg-white border-gray-200 hover:bg-gray-50'
-                } ${(i === 0 || i === 6) ? 'text-gray-400' : ''}`}>
+                    ? 'bg-primary-100 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 font-semibold'
+                    : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                } ${(i === 0 || i === 6) ? 'text-gray-400 dark:text-gray-500' : ''}`}>
                 {name}
               </button>
             ))}
@@ -302,29 +302,29 @@ export const RepeatPatternModal: React.FC<{
         {/* Date range */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Start Date</label>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Start Date</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
               min={getTodayString()} max={getMaxPlanDate()}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">End Date</label>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">End Date</label>
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
               min={startDate} max={getMaxPlanDate()}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
         </div>
 
         {/* Time */}
         {status !== 'clear' && (
           <div className="mb-4">
-            <label className="block text-xs text-gray-500 mb-1">Active Hours (optional)</label>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Active Hours (optional)</label>
             <div className="flex items-center gap-2">
               <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-              <span className="text-sm text-gray-400">to</span>
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+              <span className="text-sm text-gray-400 dark:text-gray-500">to</span>
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
             </div>
           </div>
         )}
@@ -332,15 +332,15 @@ export const RepeatPatternModal: React.FC<{
         {/* Note */}
         {status !== 'clear' && (
           <div className="mb-4">
-            <label className="block text-xs text-gray-500 mb-1">Note (optional)</label>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Note (optional)</label>
             <input type="text" value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               placeholder="e.g. Late shift, half day…" />
           </div>
         )}
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300">Cancel</button>
           <button onClick={handleRepeat} disabled={loading || daysOfWeek.length === 0}
             className="px-5 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
             {loading ? 'Applying…' : 'Apply Pattern'}
@@ -425,9 +425,9 @@ export const TemplatesPanel: React.FC<{
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 transition-colors">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-gray-800">⚡ Quick Templates</h3>
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">⚡ Quick Templates</h3>
         <button onClick={() => setShowCreate(!showCreate)}
           className="text-xs text-primary-600 hover:text-primary-700 font-medium">
           {showCreate ? 'Cancel' : '+ New'}
@@ -436,15 +436,15 @@ export const TemplatesPanel: React.FC<{
 
       {/* Template list */}
       {templates.length === 0 && !showCreate && (
-        <p className="text-xs text-gray-400">No templates yet. Create one to get started.</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">No templates yet. Create one to get started.</p>
       )}
 
       <div className="space-y-1.5">
         {templates.map((t) => (
-          <div key={t._id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg group">
+          <div key={t._id} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg group">
             <div className="flex-1 min-w-0">
-              <span className="text-xs font-medium text-gray-800">{t.name}</span>
-              <span className="ml-2 text-[10px] text-gray-400">
+              <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t.name}</span>
+              <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
                 {t.status === 'office' ? '🏢' : '🌴'} {t.status}
                 {t.startTime && ` ⏰ ${t.startTime}–${t.endTime}`}
                 {t.note && ` 📝 ${t.note}`}
@@ -453,12 +453,12 @@ export const TemplatesPanel: React.FC<{
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button onClick={() => handleApply(t)}
                 disabled={selectedDates.length === 0 || loading}
-                className="text-[10px] px-2 py-0.5 bg-primary-100 text-primary-700 rounded hover:bg-primary-200 disabled:opacity-50"
+                className="text-[10px] px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 disabled:opacity-50"
                 title={selectedDates.length === 0 ? 'Select dates first' : `Apply to ${selectedDates.length} dates`}>
                 Apply
               </button>
               <button onClick={() => handleDelete(t._id)}
-                className="text-[10px] px-2 py-0.5 bg-red-50 text-red-600 rounded hover:bg-red-100">
+                className="text-[10px] px-2 py-0.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/50">
                 ×
               </button>
             </div>
@@ -468,28 +468,28 @@ export const TemplatesPanel: React.FC<{
 
       {/* Create form */}
       {showCreate && (
-        <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
+        <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-2">
           <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
-            placeholder="Template name" className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs" />
+            placeholder="Template name" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
           <div className="flex gap-1">
             <button onClick={() => setNewStatus('office')}
-              className={`flex-1 py-1 text-xs rounded border ${newStatus === 'office' ? 'bg-blue-50 border-blue-300 font-semibold' : 'border-gray-200'}`}>
+              className={`flex-1 py-1 text-xs rounded border ${newStatus === 'office' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 font-semibold' : 'border-gray-200 dark:border-gray-600'}`}>
               🏢 Office
             </button>
             <button onClick={() => setNewStatus('leave')}
-              className={`flex-1 py-1 text-xs rounded border ${newStatus === 'leave' ? 'bg-orange-50 border-orange-300 font-semibold' : 'border-gray-200'}`}>
+              className={`flex-1 py-1 text-xs rounded border ${newStatus === 'leave' ? 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'border-gray-200 dark:border-gray-600'}`}>
               🌴 Leave
             </button>
           </div>
           <div className="flex items-center gap-1">
             <input type="time" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)}
-              className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs" />
-            <span className="text-[10px] text-gray-400">–</span>
+              className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">–</span>
             <input type="time" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)}
-              className="flex-1 px-2 py-1 border border-gray-200 rounded text-xs" />
+              className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
           </div>
           <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value.slice(0, 500))}
-            placeholder="Default note (optional)" className="w-full px-2 py-1 border border-gray-200 rounded text-xs" />
+            placeholder="Default note (optional)" className="w-full px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
           <button onClick={handleCreate} disabled={loading || !newName.trim()}
             className="w-full py-1.5 bg-primary-600 text-white text-xs rounded hover:bg-primary-700 disabled:opacity-50">
             {loading ? 'Creating…' : 'Create Template'}
@@ -571,10 +571,10 @@ export const CopyRangeModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 mb-1">Copy Week / Month</h2>
-        <p className="text-xs text-gray-500 mb-4">Quickly replicate a previous period's plan.</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Copy Week / Month</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Quickly replicate a previous period's plan.</p>
 
         {/* Mode selector */}
         <div className="flex gap-2 mb-4">
@@ -585,7 +585,7 @@ export const CopyRangeModal: React.FC<{
           ] as const).map(([m, label]) => (
             <button key={m} onClick={() => setMode(m)}
               className={`flex-1 py-2 text-xs rounded-lg border transition-all ${
-                mode === m ? 'bg-primary-50 border-primary-300 font-semibold' : 'bg-white border-gray-200 hover:bg-gray-50'
+                mode === m ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
               }`}>
               {label}
             </button>
@@ -594,12 +594,12 @@ export const CopyRangeModal: React.FC<{
 
         {/* Preview for preset modes */}
         {mode === 'last-week' && (
-          <div className="text-xs text-gray-500 mb-4 bg-gray-50 rounded-lg p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
             {(() => { const r = getLastWeekRange(); return `${r.sourceStart} → ${r.sourceEnd} copied to start at ${r.targetStart}`; })()}
           </div>
         )}
         {mode === 'last-month' && (
-          <div className="text-xs text-gray-500 mb-4 bg-gray-50 rounded-lg p-3">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
             {(() => { const r = getLastMonthRange(); return `${r.sourceStart} → ${r.sourceEnd} copied to start at ${r.targetStart}`; })()}
           </div>
         )}
@@ -609,27 +609,27 @@ export const CopyRangeModal: React.FC<{
           <div className="space-y-3 mb-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Source Start</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Source Start</label>
                 <input type="date" value={customSourceStart} onChange={(e) => setCustomSourceStart(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Source End</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Source End</label>
                 <input type="date" value={customSourceEnd} onChange={(e) => setCustomSourceEnd(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Target Start Date</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Target Start Date</label>
               <input type="date" value={customTargetStart} onChange={(e) => setCustomTargetStart(e.target.value)}
                 min={todayStr}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
             </div>
           </div>
         )}
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
           <button onClick={handleCopy} disabled={loading}
             className="px-5 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
             {loading ? 'Copying…' : 'Copy'}

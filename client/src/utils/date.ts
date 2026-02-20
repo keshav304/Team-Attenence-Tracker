@@ -92,6 +92,16 @@ export const getDayNumber = (dateStr: string): number => {
 };
 
 /**
+ * Get first day of current month as YYYY-MM-DD.
+ */
+export const getStartOfCurrentMonth = (): string => {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}-01`;
+};
+
+/**
  * Planning window max date (today + 90 days).
  */
 export const getMaxPlanDate = (): string => {
@@ -102,9 +112,22 @@ export const getMaxPlanDate = (): string => {
 
 /**
  * Check if a date can be edited by a regular member.
+ * Allowed range: start of current month → today + 90 days.
  */
 export const canMemberEdit = (dateStr: string): boolean => {
-  const today = getTodayString();
+  const minDate = getStartOfCurrentMonth();
   const maxDate = getMaxPlanDate();
-  return dateStr >= today && dateStr <= maxDate;
+  return dateStr >= minDate && dateStr <= maxDate;
+};
+
+/**
+ * Get a human-readable reason why a date is locked for a member.
+ * Returns null if the date is editable.
+ */
+export const getLockedReason = (dateStr: string): string | null => {
+  const minDate = getStartOfCurrentMonth();
+  const maxDate = getMaxPlanDate();
+  if (dateStr < minDate) return 'Before current month — read only';
+  if (dateStr > maxDate) return 'Beyond 90-day planning window';
+  return null;
 };

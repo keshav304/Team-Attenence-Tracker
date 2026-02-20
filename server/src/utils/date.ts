@@ -22,12 +22,31 @@ export const isPastDate = (dateStr: string): boolean => {
 };
 
 /**
+ * Get the first day of the current month as YYYY-MM-DD.
+ */
+export const getStartOfCurrentMonth = (): string => {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}-01`;
+};
+
+/**
+ * Check if a date is within the allowed editing window for members.
+ * Members can edit: start of current month → today + 90 days.
+ */
+export const isMemberAllowedDate = (dateStr: string): boolean => {
+  const minDate = getStartOfCurrentMonth();
+  const maxDate = getFutureDateString(90);
+  return dateStr >= minDate && dateStr <= maxDate;
+};
+
+/**
  * Check if a date is within the allowed planning window (today to today+90).
+ * @deprecated Use isMemberAllowedDate instead.
  */
 export const isWithinPlanningWindow = (dateStr: string): boolean => {
-  const today = getTodayString();
-  const maxDate = getFutureDateString(90);
-  return dateStr >= today && dateStr <= maxDate;
+  return isMemberAllowedDate(dateStr);
 };
 
 /**

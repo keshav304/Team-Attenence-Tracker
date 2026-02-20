@@ -83,7 +83,7 @@ const AdminHolidaysPage: React.FC = () => {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Manage Holidays</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Manage Holidays</h1>
         <button
           onClick={openCreate}
           className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors"
@@ -97,34 +97,34 @@ const AdminHolidaysPage: React.FC = () => {
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
         </div>
       ) : holidays.length === 0 ? (
-        <div className="text-center py-20 text-gray-500">
+        <div className="text-center py-20 text-gray-500 dark:text-gray-400">
           No holidays configured. Click "Add Holiday" to get started.
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden transition-colors">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-semibold text-gray-700">Date</th>
-                <th className="px-4 py-3 font-semibold text-gray-700">Name</th>
-                <th className="px-4 py-3 font-semibold text-gray-700 text-right">Actions</th>
+              <tr className="bg-gray-50 dark:bg-gray-700/50 text-left">
+                <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Date</th>
+                <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Name</th>
+                <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {holidays.map((h) => (
-                <tr key={h._id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-700">{formatDisplayDate(h.date)}</td>
-                  <td className="px-4 py-3 font-medium">🎉 {h.name}</td>
+                <tr key={h._id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDisplayDate(h.date)}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">🎉 {h.name}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openEdit(h)}
-                      className="text-xs px-2 py-1 text-primary-600 hover:bg-primary-50 rounded mr-2"
+                      className="text-xs px-2 py-1 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded mr-2"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(h)}
-                      className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                      className="text-xs px-2 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
                     >
                       Delete
                     </button>
@@ -138,31 +138,31 @@ const AdminHolidaysPage: React.FC = () => {
 
       {/* Add/Edit Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">
               {editingHoliday ? 'Edit Holiday' : 'Add Holiday'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
                 <input
                   type="date"
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
                 <input
                   type="text"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   required
                   maxLength={100}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="Holiday name"
                 />
               </div>
@@ -170,7 +170,7 @@ const AdminHolidaysPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
                 >
                   Cancel
                 </button>

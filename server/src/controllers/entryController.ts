@@ -3,8 +3,7 @@ import Entry from '../models/Entry';
 import User from '../models/User';
 import { AuthRequest } from '../types';
 import {
-  isPastDate,
-  isWithinPlanningWindow,
+  isMemberAllowedDate,
   getMonthRange,
   getTodayString,
   getFutureDateString,
@@ -64,20 +63,11 @@ export const upsertEntry = async (
       return;
     }
 
-    // Members cannot edit past dates
-    if (!isAdmin && isPastDate(date)) {
+    // Members can only edit dates within current month start → today + 90 days
+    if (!isAdmin && !isMemberAllowedDate(date)) {
       res.status(403).json({
         success: false,
-        message: 'Cannot modify past dates',
-      });
-      return;
-    }
-
-    // Members must be within planning window
-    if (!isAdmin && !isWithinPlanningWindow(date)) {
-      res.status(403).json({
-        success: false,
-        message: 'Date must be within 90 days from today',
+        message: 'You can only edit dates within the current month and up to 90 days ahead',
       });
       return;
     }
@@ -216,10 +206,10 @@ export const deleteEntry = async (
     const userId = req.user!._id;
     const isAdmin = req.user!.role === 'admin';
 
-    if (!isAdmin && isPastDate(date)) {
+    if (!isAdmin && !isMemberAllowedDate(date)) {
       res.status(403).json({
         success: false,
-        message: 'Cannot modify past dates',
+        message: 'You can only edit dates within the current month and up to 90 days ahead',
       });
       return;
     }
@@ -364,8 +354,7 @@ export const getTeamEntries = async (
 const filterAllowedDates = (dates: string[], isAdmin: boolean): string[] => {
   return dates.filter((d) => {
     if (!DATE_RE.test(d)) return false;
-    if (!isAdmin && isPastDate(d)) return false;
-    if (!isAdmin && !isWithinPlanningWindow(d)) return false;
+    if (!isAdmin && !isMemberAllowedDate(d)) return false;
     return true;
   });
 };
@@ -688,7 +677,7 @@ export const copyRange = async (
       const tgtDateStr = targetDate.toISOString().split('T')[0];
 
       // Check allowed
-      if ((!isAdmin && isPastDate(tgtDateStr)) || (!isAdmin && !isWithinPlanningWindow(tgtDateStr))) {
+      if (!isAdmin && !isMemberAllowedDate(tgtDateStr)) {
         results.push({ date: tgtDateStr, success: false, message: 'Outside allowed range' });
         current.setDate(current.getDate() + 1);
         continue;
