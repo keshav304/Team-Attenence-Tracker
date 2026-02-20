@@ -31,7 +31,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2">
               <span className="text-2xl">📍</span>
-              <span className="font-bold text-xl text-gray-900 dark:text-gray-100">A-Team Tracker</span>
+              <span className="font-bold text-xl text-gray-900 dark:text-gray-100">dhSync</span>
             </Link>
 
             {/* Navigation */}

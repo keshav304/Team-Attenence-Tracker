@@ -5,7 +5,7 @@ import Holiday from './models/Holiday';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/a-team-tracker';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dhsync';
 
 const seed = async () => {
   try {

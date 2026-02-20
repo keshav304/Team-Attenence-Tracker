@@ -1,4 +1,4 @@
-# 📍 A-Team Tracker
+# 📍 dhSync
 
 Internal web application for a team to plan and track daily work location visibility.
 

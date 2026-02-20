@@ -55,6 +55,7 @@ const MyCalendarPage: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<string | null>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
+  const calendarAreaRef = useRef<HTMLDivElement>(null);
 
   // ─── Modal states for advanced features ──────
   const [showCopyModal, setShowCopyModal] = useState(false);
@@ -129,6 +130,20 @@ const MyCalendarPage: React.FC = () => {
     const handler = () => { setIsDragging(false); };
     window.addEventListener('mouseup', handler);
     return () => window.removeEventListener('mouseup', handler);
+  }, []);
+
+  // Clear selection when clicking outside the calendar area
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        calendarAreaRef.current &&
+        !calendarAreaRef.current.contains(e.target as Node)
+      ) {
+        setSelectedDates([]);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const toggleDateSelection = (date: string) => {
@@ -238,11 +253,14 @@ const MyCalendarPage: React.FC = () => {
     };
   };
 
-  // Stats
-  const statuses = Object.values(entries).map((e) => e.status);
-  const officeDays = statuses.filter((s) => s === 'office').length;
-  const leaveDays = statuses.filter((s) => s === 'leave').length;
-  const workingDays = days.filter((d) => !isWeekend(d) && !holidays[d]).length;
+  // Stats — only count entries that fall on actual working days
+  const workingDaySet = new Set(days.filter((d) => !isWeekend(d) && !holidays[d]));
+  const workingDayStatuses = Object.entries(entries)
+    .filter(([date]) => workingDaySet.has(date))
+    .map(([, e]) => e.status);
+  const officeDays = workingDayStatuses.filter((s) => s === 'office').length;
+  const leaveDays = workingDayStatuses.filter((s) => s === 'leave').length;
+  const workingDays = workingDaySet.size;
   const wfhDays = workingDays - officeDays - leaveDays;
 
   const formatDateLong = (d: string) => {
@@ -305,7 +323,8 @@ const MyCalendarPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ─── Action Toolbar ───────────────────── */}
+      {/* ─── Action Toolbar + Calendar Area (click-outside boundary) ─── */}
+      <div ref={calendarAreaRef}>
       <div className="flex flex-wrap gap-2 mb-4">
         <button onClick={() => setShowRepeatModal(true)}
           className="px-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
@@ -479,6 +498,7 @@ const MyCalendarPage: React.FC = () => {
           <TemplatesPanel selectedDates={selectedDates} onApplied={() => { fetchData(); setSelectedDates([]); }} />
         </div>
       </div>
+      </div>{/* end calendarAreaRef */}
 
       {/* ─── Modals ────────────────────────────── */}
       {showCopyModal && (

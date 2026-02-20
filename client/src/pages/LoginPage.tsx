@@ -27,7 +27,7 @@ const LoginPage: React.FC = () => {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <span className="text-5xl">📍</span>
-          <h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-gray-100">A-Team Tracker</h1>
+          <h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-gray-100">dhSync</h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">Sign in to see your team's availability</p>
         </div>
 

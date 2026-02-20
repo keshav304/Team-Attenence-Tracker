@@ -1,5 +1,5 @@
 {
-  "name": "a-team-tracker",
+  "name": "dhsync",
   "version": "1.0.0",
   "description": "Internal team work location visibility planner (MERN + TypeScript)",
   "private": true,
