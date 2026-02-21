@@ -1,6 +1,9 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import Event from '../models/Event.js';
 import { AuthRequest } from '../types/index.js';
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Get events for a date range. All authenticated users can view.
@@ -17,8 +20,27 @@ export const getEvents = async (
     };
 
     const query: Record<string, unknown> = {};
-    if (startDate && endDate) {
-      query.date = { $gte: startDate, $lte: endDate };
+
+    if (startDate || endDate) {
+      const dateFilter: Record<string, string> = {};
+
+      if (startDate) {
+        if (!DATE_RE.test(startDate)) {
+          res.status(400).json({ success: false, message: 'startDate must be YYYY-MM-DD' });
+          return;
+        }
+        dateFilter.$gte = startDate;
+      }
+
+      if (endDate) {
+        if (!DATE_RE.test(endDate)) {
+          res.status(400).json({ success: false, message: 'endDate must be YYYY-MM-DD' });
+          return;
+        }
+        dateFilter.$lte = endDate;
+      }
+
+      query.date = dateFilter;
     }
 
     const events = await Event.find(query)
@@ -41,6 +63,11 @@ export const createEvent = async (
   res: Response
 ): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+
     const { date, title, description, eventType } = req.body;
 
     const event = await Event.create({
@@ -48,7 +75,7 @@ export const createEvent = async (
       title,
       description,
       eventType,
-      createdBy: req.user!._id,
+      createdBy: req.user._id,
     });
 
     const populated = await Event.findById(event._id).populate('createdBy', 'name email');
@@ -63,7 +90,7 @@ export const createEvent = async (
       return;
     }
     console.error('createEvent error:', error);
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({ success: false, message: 'Failed to create event' });
   }
 };
 
@@ -77,6 +104,12 @@ export const updateEvent = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ success: false, message: 'Invalid event ID format' });
+      return;
+    }
+
     const { date, title, description, eventType } = req.body;
 
     const updateData: Record<string, unknown> = {};
@@ -105,7 +138,7 @@ export const updateEvent = async (
       return;
     }
     console.error('updateEvent error:', error);
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({ success: false, message: 'Failed to update event' });
   }
 };
 
@@ -119,6 +152,12 @@ export const deleteEvent = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ success: false, message: 'Invalid event ID format' });
+      return;
+    }
+
     const event = await Event.findByIdAndDelete(id);
 
     if (!event) {
@@ -129,6 +168,6 @@ export const deleteEvent = async (
     res.json({ success: true, message: 'Event deleted' });
   } catch (error: any) {
     console.error('deleteEvent error:', error);
-    res.status(400).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Unable to delete event' });
   }
 };

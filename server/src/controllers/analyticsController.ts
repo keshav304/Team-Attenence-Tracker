@@ -4,15 +4,11 @@ import Entry from '../models/Entry.js';
 import Holiday from '../models/Holiday.js';
 import Event from '../models/Event.js';
 import { AuthRequest } from '../types/index.js';
-import { getTodayString, toISTDateString } from '../utils/date.js';
+import { getTodayString } from '../utils/date.js';
 
 /* ================================================================== */
 /*  Helpers                                                           */
 /* ================================================================== */
-
-const dayOfWeekNames = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-];
 
 /** Parse YYYY-MM-DD to { year, month, day } numbers. */
 function parseDateStr(d: string) {
@@ -29,20 +25,20 @@ function getWorkingDays(
   const days: string[] = [];
   const start = parseDateStr(startDate);
   const end = parseDateStr(endDate);
-  const d = new Date(start.year, start.month - 1, start.day);
-  const endD = new Date(end.year, end.month - 1, end.day);
+  const d = new Date(Date.UTC(start.year, start.month - 1, start.day));
+  const endD = new Date(Date.UTC(end.year, end.month - 1, end.day));
 
   while (d <= endD) {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    const dow = d.getDay();
+    const dow = d.getUTCDay();
 
     if (dow !== 0 && dow !== 6 && !holidaySet.has(dateStr)) {
       days.push(dateStr);
     }
-    d.setDate(d.getDate() + 1);
+    d.setUTCDate(d.getUTCDate() + 1);
   }
   return days;
 }
@@ -69,6 +65,56 @@ function formatDateNice(dateStr: string): string {
 }
 
 /* ================================================================== */
+/*  Shared attendance computation                                     */
+/* ================================================================== */
+
+interface AttendanceStats {
+  totalWorkingDays: number;
+  officeDays: number;
+  leaveDays: number;
+  wfhDays: number;
+  officePercent: number;
+}
+
+/**
+ * Compute attendance statistics for a user over a date range.
+ * Shared by getMyPercentage (API) and handlePersonalAttendance (chat).
+ */
+async function computeAttendanceStats(
+  userId: string | any,
+  startDate: string,
+  endDate: string
+): Promise<{ stats: AttendanceStats; workingDays: string[]; entryMap: Map<string, string> }> {
+  const [holidays, entries] = await Promise.all([
+    Holiday.find({ date: { $gte: startDate, $lte: endDate } }),
+    Entry.find({ userId, date: { $gte: startDate, $lte: endDate } }),
+  ]);
+
+  const holidaySet = new Set(holidays.map((h) => h.date));
+  const workingDays = getWorkingDays(startDate, endDate, holidaySet);
+  const totalWorkingDays = workingDays.length;
+
+  const entryMap = new Map(entries.map((e) => [e.date, e.status]));
+  let officeDays = 0;
+  let leaveDays = 0;
+  for (const d of workingDays) {
+    const status = entryMap.get(d);
+    if (status === 'office') officeDays++;
+    else if (status === 'leave') leaveDays++;
+  }
+  const wfhDays = totalWorkingDays - officeDays - leaveDays;
+  const officePercent = totalWorkingDays > 0
+    ? Math.round((officeDays / totalWorkingDays) * 100)
+    : 0;
+
+  return {
+    stats: { totalWorkingDays, officeDays, leaveDays, wfhDays, officePercent },
+    workingDays,
+    entryMap,
+  };
+}
+
+/* ================================================================== */
 /*  Personal Office Percentage (for My Calendar banner)               */
 /*  GET /api/analytics/my-percentage?month=MM&year=YYYY               */
 /* ================================================================== */
@@ -81,46 +127,21 @@ export const getMyPercentage = async (
     const month = Number(req.query.month);
     const year = Number(req.query.year);
 
-    if (!month || !year || month < 1 || month > 12) {
-      res.status(400).json({ success: false, message: 'Valid month (1-12) and year required' });
+    if (!month || !year || month < 1 || month > 12 || year < 2000 || year > 2100) {
+      res.status(400).json({ success: false, message: 'Valid month (1-12) and year (2000-2100) required' });
       return;
     }
 
     const userId = req.user!._id;
     const { startDate, endDate } = getMonthRange(year, month);
-
-    const [holidays, entries] = await Promise.all([
-      Holiday.find({ date: { $gte: startDate, $lte: endDate } }),
-      Entry.find({ userId, date: { $gte: startDate, $lte: endDate } }),
-    ]);
-
-    const holidaySet = new Set(holidays.map((h) => h.date));
-    const workingDays = getWorkingDays(startDate, endDate, holidaySet);
-    const totalWorkingDays = workingDays.length;
-
-    const entryMap = new Map(entries.map((e) => [e.date, e.status]));
-    let officeDays = 0;
-    let leaveDays = 0;
-    for (const d of workingDays) {
-      const status = entryMap.get(d);
-      if (status === 'office') officeDays++;
-      else if (status === 'leave') leaveDays++;
-    }
-    const wfhDays = totalWorkingDays - officeDays - leaveDays;
-    const officePercent = totalWorkingDays > 0
-      ? Math.round((officeDays / totalWorkingDays) * 100)
-      : 0;
+    const { stats } = await computeAttendanceStats(userId, startDate, endDate);
 
     res.json({
       success: true,
       data: {
         month,
         year,
-        totalWorkingDays,
-        officeDays,
-        leaveDays,
-        wfhDays,
-        officePercent,
+        ...stats,
       },
     });
   } catch (error: any) {
@@ -166,7 +187,7 @@ function classifyIntent(question: string): Intent {
 
   // Personal attendance
   if (
-    /\b(my|i |i'm|am i|do i)\b/.test(q) &&
+    /\b(my|i(?=\s|$)|i'm|am i|do i)\b/.test(q) &&
     /\b(office|leave|wfh|work from home|attendance|percentage|percent|days|schedule|coming|in office|mostly)\b/.test(q)
   ) {
     return 'personal_attendance';
@@ -182,7 +203,7 @@ function classifyIntent(question: string): Intent {
 
   // Team presence (specific person or "who is")
   if (
-    /\b(who is|who's|is \w+ |when is|when's|when will|where is|\w+ coming|list .* office|list .* leave)\b/.test(q) &&
+    /\b(who is|who's|is \w+(?=\s|$)|when is|when's|when will|where is|\w+ coming|list .* office|list .* leave)\b/.test(q) &&
     /\b(office|leave|wfh|tomorrow|today|monday|tuesday|wednesday|thursday|friday|next week|next month|this week|this month)\b/.test(q)
   ) {
     return 'team_presence';
@@ -194,7 +215,7 @@ function classifyIntent(question: string): Intent {
   }
 
   // Broader personal catch
-  if (/\b(my|i )\b/.test(q) && /\b(calendar|schedule|office|leave)\b/.test(q)) {
+  if (/\b(my|i(?=\s|$))\b/.test(q) && /\b(calendar|schedule|office|leave)\b/.test(q)) {
     return 'personal_attendance';
   }
 
@@ -230,10 +251,13 @@ function resolveTimePeriod(question: string): DateRange {
     const isNextMonth = /\bnext month\b/.test(q);
 
     if (isNextMonth) {
-      // Find that day in next month
+      // Find the first occurrence of that day in next month
       const nm = new Date(currentYear, currentMonth + 1, 1);
-      const range = getMonthRange(nm.getFullYear(), nm.getMonth() + 1);
-      return { ...range, label: `next month` };
+      const firstDayOfMonth = nm.getDay();
+      const offset = (targetDay - firstDayOfMonth + 7) % 7;
+      nm.setDate(nm.getDate() + offset);
+      const dateStr = formatAsISO(nm);
+      return { startDate: dateStr, endDate: dateStr, label: `${dayMatch[1]} next month` };
     }
 
     // Find the next occurrence of that day
@@ -331,38 +355,22 @@ function extractPersonName(question: string): string | null {
   return null;
 }
 
+/** Escape regex-special characters in a string for safe use in $regex / RegExp. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /* ================================================================== */
 /*  Handlers per intent                                               */
 /* ================================================================== */
 
 async function handlePersonalAttendance(
   question: string,
-  userId: string,
-  userName: string
+  userId: string
 ): Promise<string> {
   const { startDate, endDate, label } = resolveTimePeriod(question);
-
-  const [holidays, entries] = await Promise.all([
-    Holiday.find({ date: { $gte: startDate, $lte: endDate } }),
-    Entry.find({ userId, date: { $gte: startDate, $lte: endDate } }),
-  ]);
-
-  const holidaySet = new Set(holidays.map((h) => h.date));
-  const workingDays = getWorkingDays(startDate, endDate, holidaySet);
-  const totalWorkingDays = workingDays.length;
-
-  const entryMap = new Map(entries.map((e) => [e.date, e.status]));
-  let officeDays = 0;
-  let leaveDays = 0;
-  for (const d of workingDays) {
-    const status = entryMap.get(d);
-    if (status === 'office') officeDays++;
-    else if (status === 'leave') leaveDays++;
-  }
-  const wfhDays = totalWorkingDays - officeDays - leaveDays;
-  const officePercent = totalWorkingDays > 0
-    ? Math.round((officeDays / totalWorkingDays) * 100)
-    : 0;
+  const { stats, workingDays, entryMap } = await computeAttendanceStats(userId, startDate, endDate);
+  const { totalWorkingDays, officeDays, leaveDays, wfhDays, officePercent } = stats;
 
   const q = question.toLowerCase();
 
@@ -416,7 +424,7 @@ async function handleTeamPresence(question: string): Promise<string> {
     // Find user by name (case-insensitive partial match)
     const users = await User.find({
       isActive: true,
-      name: { $regex: personName, $options: 'i' },
+      name: { $regex: escapeRegExp(personName), $options: 'i' },
     }).select('name email');
 
     if (users.length === 0) {
@@ -514,7 +522,6 @@ async function handleTeamPresence(question: string): Promise<string> {
     }
 
     // Multi-day: list count per day
-    const userMap = new Map(users.map((u) => [u._id.toString(), u.name]));
     const entryByDate = new Map<string, Map<string, string>>();
     entries.forEach((e) => {
       if (!entryByDate.has(e.date)) entryByDate.set(e.date, new Map());
@@ -542,14 +549,15 @@ async function handleTeamAnalytics(question: string): Promise<string> {
 
   const [users, holidays, entries] = await Promise.all([
     User.find({ isActive: true }).select('name'),
-    Holiday.find({ date: { $gte: startDate, $lte: endDate } }),
-    Entry.find({ date: { $gte: startDate, $lte: endDate } }),
+    Holiday.find({ date: { $gte: startDate, $lte: endDate } }).select('date'),
+    Entry.find({ date: { $gte: startDate, $lte: endDate } }).select('userId date status'),
   ]);
 
   const holidaySet = new Set(holidays.map((h) => h.date));
   const workingDays = getWorkingDays(startDate, endDate, holidaySet);
+  const totalWorkingDays = workingDays.length;
 
-  if (workingDays.length === 0) {
+  if (totalWorkingDays === 0) {
     return `There are no working days in the requested period (${label}).`;
   }
 
@@ -569,11 +577,19 @@ async function handleTeamAnalytics(question: string): Promise<string> {
   }
 
   // Single-day "how many people on Friday"
-  if (workingDays.length === 1 || /how many people|how many employees/.test(q)) {
-    if (workingDays.length === 1) {
-      const c = dailyCounts[0];
-      return `${c.count} ${c.count === 1 ? 'person' : 'people'} ${c.count === 1 ? 'is' : 'are'} scheduled to be in the office on ${formatDateNice(c.date)} (out of ${users.length} team members).`;
-    }
+  if (workingDays.length === 1) {
+    const c = dailyCounts[0];
+    return `${c.count} ${c.count === 1 ? 'person' : 'people'} ${c.count === 1 ? 'is' : 'are'} scheduled to be in the office on ${formatDateNice(c.date)} (out of ${users.length} team members).`;
+  }
+
+  // Multi-day "how many people" question
+  if (/how many people|how many employees/.test(q)) {
+    const total = dailyCounts.reduce((sum, d) => sum + d.count, 0);
+    const avg = totalWorkingDays > 0 ? (total / totalWorkingDays).toFixed(1) : '0';
+    const sorted = [...dailyCounts].sort((a, b) => b.count - a.count);
+    const peak = sorted[0];
+    const lines = dailyCounts.map((d) => `• ${formatDateNice(d.date)}: ${d.count} ${d.count === 1 ? 'person' : 'people'}`);
+    return `Office attendance ${label} (${totalWorkingDays} working days, avg ${avg}/day, peak ${peak.count} on ${formatDateNice(peak.date)}):\n${lines.join('\n')}`;
   }
 
   // Least attendance
@@ -646,20 +662,33 @@ export async function classifyAndAnswer(
   question: string,
   user: { _id: any; name: string }
 ): Promise<string | null> {
-  const q = question.trim();
-  const intent = classifyIntent(q);
+  let intent: Intent = 'unknown';
+  try {
+    const q = question.trim();
+    intent = classifyIntent(q);
 
-  switch (intent) {
-    case 'personal_attendance':
-      return handlePersonalAttendance(q, user._id.toString(), user.name);
-    case 'team_presence':
-      return handleTeamPresence(q);
-    case 'team_analytics':
-      return handleTeamAnalytics(q);
-    case 'event_query':
-      return handleEventQuery(q);
-    default:
-      return null;
+    switch (intent) {
+      case 'personal_attendance':
+        return await handlePersonalAttendance(q, user._id.toString());
+      case 'team_presence':
+        return await handleTeamPresence(q);
+      case 'team_analytics':
+        return await handleTeamAnalytics(q);
+      case 'event_query':
+        return await handleEventQuery(q);
+      default:
+        return null;
+    }
+  } catch (err: any) {
+    console.error('classifyAndAnswer error:', {
+      question,
+      intent,
+      userId: user._id,
+      userName: user.name,
+      error: err.message,
+      stack: err.stack,
+    });
+    return null;
   }
 }
 
@@ -681,35 +710,10 @@ export const chatQuery = async (
 
     const q = question.trim();
     const intent = classifyIntent(q);
-
-    let answer: string;
-
-    switch (intent) {
-      case 'personal_attendance':
-        answer = await handlePersonalAttendance(
-          q,
-          req.user!._id.toString(),
-          req.user!.name
-        );
-        break;
-
-      case 'team_presence':
-        answer = await handleTeamPresence(q);
-        break;
-
-      case 'team_analytics':
-        answer = await handleTeamAnalytics(q);
-        break;
-
-      case 'event_query':
-        answer = await handleEventQuery(q);
-        break;
-
-      default:
-        // Return null to signal that this should fall through to RAG
-        res.json({ success: true, data: { intent: 'unknown', answer: null } });
-        return;
-    }
+    const answer = await classifyAndAnswer(q, {
+      _id: req.user!._id,
+      name: req.user!.name,
+    });
 
     res.json({
       success: true,

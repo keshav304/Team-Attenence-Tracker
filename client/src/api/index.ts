@@ -176,8 +176,8 @@ export const workbotApi = {
 
 // ─── Events (Admin Event Tagging) ────────────
 export const eventApi = {
-  getEvents: (startDate?: string, endDate?: string) =>
-    api.get<ApiResponse<CalendarEvent[]>>('/events', { params: { startDate, endDate } }),
+  getEvents: (startDate?: string, endDate?: string, signal?: AbortSignal) =>
+    api.get<ApiResponse<CalendarEvent[]>>('/events', { params: { startDate, endDate }, signal }),
 
   createEvent: (data: { date: string; title: string; description?: string; eventType?: string }) =>
     api.post<ApiResponse<CalendarEvent>>('/events', data),

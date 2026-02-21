@@ -9,6 +9,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import {
   validateCreateEvent,
   validateUpdateEvent,
+  validateEventId,
 } from '../middleware/eventValidation.js';
 
 const router = Router();
@@ -21,7 +22,7 @@ router.get('/', getEvents);
 
 // Admin-only: create, update, delete
 router.post('/', requireAdmin, validateCreateEvent, createEvent);
-router.put('/:id', requireAdmin, validateUpdateEvent, updateEvent);
-router.delete('/:id', requireAdmin, deleteEvent);
+router.put('/:id', requireAdmin, validateEventId, validateUpdateEvent, updateEvent);
+router.delete('/:id', requireAdmin, validateEventId, deleteEvent);
 
 export default router;

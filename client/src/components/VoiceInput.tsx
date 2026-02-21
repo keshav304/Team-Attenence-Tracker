@@ -87,13 +87,13 @@ function friendlyError(errorCode: string): string {
     case 'no-speech':
       return 'No speech detected. Please try again.';
     case 'network':
-      return 'Voice input is currently only supported in Google Chrome. Please switch to Chrome to use this feature.';
+      return 'Network error — please check your internet connection and try again.';
     case 'aborted':
       return 'Speech recognition was interrupted.';
     case 'audio-capture':
       return 'No microphone found. Please connect one and try again.';
     case 'service-not-allowed':
-      return 'Speech recognition service is not available. This feature is currently only supported in Google Chrome.';
+      return 'Speech recognition is not supported in this browser. Try Chrome or another Chromium-based browser (e.g., Microsoft Edge).';
     default:
       return 'Speech recognition failed. Please type your input instead.';
   }
@@ -156,7 +156,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ onTranscript, disabled = false,
   const launchRecognition = useCallback((isRetry: boolean) => {
     const SpeechRecognitionCtor = getSpeechRecognition();
     if (!SpeechRecognitionCtor) {
-      setErrorMsg('Speech recognition is not supported in this browser.');
+      setErrorMsg('Speech recognition is not supported in this browser. Try Chrome or another Chromium-based browser (e.g., Microsoft Edge).');
       setVoiceState('error');
       if (errorTimeoutRef.current !== null) { clearTimeout(errorTimeoutRef.current); }
       errorTimeoutRef.current = safeTimeout(() => { setVoiceState('idle'); setErrorMsg(null); }, 3000);

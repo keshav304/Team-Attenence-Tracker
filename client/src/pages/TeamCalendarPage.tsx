@@ -57,7 +57,8 @@ const TeamCalendarPage: React.FC = () => {
 
   // Events
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [eventDetail, setEventDetail] = useState<CalendarEvent | null>(null);
+  const [eventDetailList, setEventDetailList] = useState<CalendarEvent[]>([]);
+  const [eventDetailIdx, setEventDetailIdx] = useState(0);
 
   const days = getDaysInMonth(month);
 
@@ -87,10 +88,11 @@ const TeamCalendarPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [teamRes, holidayRes, summaryRes] = await Promise.all([
+      const [teamRes, holidayRes, summaryRes, eventRes] = await Promise.all([
         entryApi.getTeamEntries(month),
         holidayApi.getHolidays(days[0], days[days.length - 1]),
         entryApi.getTeamSummary(month),
+        eventApi.getEvents(days[0], days[days.length - 1]).catch(() => null),
       ]);
       setTeam(teamRes.data.data?.team || []);
 
@@ -101,13 +103,7 @@ const TeamCalendarPage: React.FC = () => {
       setHolidays(hMap);
       setSummary(summaryRes.data.data || {});
 
-      // Fetch events
-      try {
-        const eventRes = await eventApi.getEvents(days[0], days[days.length - 1]);
-        setEvents(eventRes.data.data || []);
-      } catch {
-        // Non-critical
-      }
+      setEvents(eventRes?.data.data || []);
     } catch {
       toast.error('Failed to load team data');
     } finally {
@@ -136,6 +132,18 @@ const TeamCalendarPage: React.FC = () => {
   useEffect(() => {
     fetchTodayStatus();
   }, [fetchTodayStatus]);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editCell) setEditCell(null);
+        else if (eventDetailList.length > 0) setEventDetailList([]);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editCell, eventDetailList]);
 
   const getEffectiveStatus = (
     memberEntries: Record<string, EntryDetail>,
@@ -274,11 +282,14 @@ const TeamCalendarPage: React.FC = () => {
   };
 
   // Events lookup: date → events[]
-  const eventsMap: Record<string, CalendarEvent[]> = {};
-  events.forEach((ev) => {
-    if (!eventsMap[ev.date]) eventsMap[ev.date] = [];
-    eventsMap[ev.date].push(ev);
-  });
+  const eventsMap = useMemo(() => {
+    const map: Record<string, CalendarEvent[]> = {};
+    events.forEach((ev) => {
+      if (!map[ev.date]) map[ev.date] = [];
+      map[ev.date].push(ev);
+    });
+    return map;
+  }, [events]);
 
   return (
     <div>
@@ -614,7 +625,7 @@ const TeamCalendarPage: React.FC = () => {
                       {hasEvents && (
                         <div
                           className="flex justify-center gap-0.5 mt-0.5 cursor-pointer"
-                          onClick={() => setEventDetail(dateEvents[0])}
+                          onClick={() => { setEventDetailList(dateEvents); setEventDetailIdx(0); }}
                         >
                           <div className={`w-1.5 h-1.5 rounded-full ${isMandatory ? 'bg-red-500' : 'bg-amber-500'}`} />
                         </div>
@@ -853,46 +864,76 @@ const TeamCalendarPage: React.FC = () => {
       )}
 
       {/* Event Detail Modal */}
-      {eventDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={() => setEventDetail(null)}>
-          <div
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">📌</span>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{eventDetail.title}</h2>
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-              {new Date(eventDetail.date + 'T00:00:00').toLocaleDateString('en-US', {
-                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-              })}
-            </div>
-            {eventDetail.eventType && (
-              <div className="inline-block px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 mb-3">
-                {eventDetail.eventType}
+      {eventDetailList.length > 0 && (() => {
+        const eventDetail = eventDetailList[eventDetailIdx];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={() => setEventDetailList([])}>
+            <div
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {eventDetailList.length > 1 && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Event {eventDetailIdx + 1} of {eventDetailList.length}
+                </div>
+              )}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xl">📌</span>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{eventDetail.title}</h2>
               </div>
-            )}
-            {eventDetail.description && (
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">{eventDetail.description}</p>
-            )}
-            {eventDetail.createdBy && (
-              <p className="text-xs text-gray-500 dark:text-gray-500">
-                Created by {eventDetail.createdBy.name}
-              </p>
-            )}
-            <div className="flex justify-end mt-4">
-              <button
-                type="button"
-                onClick={() => setEventDetail(null)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
-              >
-                Close
-              </button>
+              <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                {new Date(eventDetail.date + 'T00:00:00').toLocaleDateString('en-US', {
+                  weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+                })}
+              </div>
+              {eventDetail.eventType && (
+                <div className="inline-block px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 mb-3">
+                  {eventDetail.eventType}
+                </div>
+              )}
+              {eventDetail.description && (
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">{eventDetail.description}</p>
+              )}
+              {eventDetail.createdBy && (
+                <p className="text-xs text-gray-500 dark:text-gray-500">
+                  Created by {eventDetail.createdBy.name || eventDetail.createdBy.email || 'Unknown'}
+                </p>
+              )}
+              <div className="flex justify-between items-center mt-4">
+                <div className="flex gap-2">
+                  {eventDetailList.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEventDetailIdx((i) => Math.max(0, i - 1))}
+                        disabled={eventDetailIdx === 0}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
+                      >
+                        ← Prev
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEventDetailIdx((i) => Math.min(eventDetailList.length - 1, i + 1))}
+                        disabled={eventDetailIdx === eventDetailList.length - 1}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
+                      >
+                        Next →
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEventDetailList([])}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

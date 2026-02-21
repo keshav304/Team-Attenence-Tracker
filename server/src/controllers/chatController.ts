@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 import { embedText } from '../utils/embeddings.js';
 import config from '../config/index.js';
 import { AuthRequest } from '../types/index.js';
-import { chatQuery } from './analyticsController.js';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -162,6 +161,17 @@ async function generateAnswer(
 /*  Data-aware analytics (inline helper)                              */
 /* ------------------------------------------------------------------ */
 
+// Cache the dynamic import so classifyAndAnswer is loaded once
+let _classifyAndAnswer: typeof import('./analyticsController.js')['classifyAndAnswer'] | null = null;
+
+async function getClassifyAndAnswer() {
+  if (!_classifyAndAnswer) {
+    const mod = await import('./analyticsController.js');
+    _classifyAndAnswer = mod.classifyAndAnswer;
+  }
+  return _classifyAndAnswer;
+}
+
 /**
  * Attempt to answer the user's question via the analytics handler.
  * Returns the answer string, or null if the query is not data-related
@@ -169,11 +179,10 @@ async function generateAnswer(
  */
 async function tryAnalyticsQuery(
   question: string,
-  req: AuthRequest
+  user: { _id: any; name: string }
 ): Promise<string | null> {
-  // Import the intent classifier and handlers from analyticsController
-  const { classifyAndAnswer } = await import('./analyticsController.js');
-  return classifyAndAnswer(question, req.user!);
+  const classifyAndAnswer = await getClassifyAndAnswer();
+  return classifyAndAnswer(question, user);
 }
 
 /* ------------------------------------------------------------------ */
@@ -248,7 +257,10 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     const authReq = req as AuthRequest;
     if (authReq.user) {
       try {
-        const analyticsResult = await tryAnalyticsQuery(question, authReq);
+        const analyticsResult = await tryAnalyticsQuery(question, {
+          _id: authReq.user._id,
+          name: authReq.user.name,
+        });
         if (analyticsResult) {
           res.json({ answer: analyticsResult, sources: [] });
           return;

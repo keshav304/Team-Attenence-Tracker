@@ -3,17 +3,7 @@ import { eventApi } from '../api';
 import type { CalendarEvent } from '../types';
 import toast from 'react-hot-toast';
 
-const EVENT_TYPE_OPTIONS = [
-  { value: '', label: 'None' },
-  { value: 'team-party', label: '🎉 Team Party' },
-  { value: 'mandatory-office', label: '🏢 Mandatory Office' },
-  { value: 'offsite', label: '✈️ Offsite' },
-  { value: 'town-hall', label: '🎤 Town Hall' },
-  { value: 'deadline', label: '⏰ Deadline' },
-  { value: 'office-closed', label: '🚫 Office Closed' },
-  { value: 'other', label: '📌 Other' },
-];
-
+/** Canonical map: event-type slug → emoji (single source of truth). */
 const EVENT_TYPE_EMOJI: Record<string, string> = {
   'team-party': '🎉',
   'mandatory-office': '🏢',
@@ -23,6 +13,26 @@ const EVENT_TYPE_EMOJI: Record<string, string> = {
   'office-closed': '🚫',
   other: '📌',
 };
+
+/** Human-readable names keyed by slug. */
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  'team-party': 'Team Party',
+  'mandatory-office': 'Mandatory Office',
+  offsite: 'Offsite',
+  'town-hall': 'Town Hall',
+  deadline: 'Deadline',
+  'office-closed': 'Office Closed',
+  other: 'Other',
+};
+
+/** Derived select-options — emojis come from EVENT_TYPE_EMOJI. */
+const EVENT_TYPE_OPTIONS = [
+  { value: '', label: 'None' },
+  ...Object.entries(EVENT_TYPE_EMOJI).map(([key, emoji]) => ({
+    value: key,
+    label: `${emoji} ${EVENT_TYPE_LABELS[key] ?? key}`,
+  })),
+];
 
 const AdminEventsPage: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -34,25 +44,43 @@ const AdminEventsPage: React.FC = () => {
   const [formTitle, setFormTitle] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formEventType, setFormEventType] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   // Filter
   const [filterMonth, setFilterMonth] = useState('');
 
-  const fetchEvents = async () => {
+  const fetchEvents = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await eventApi.getEvents();
-      setEvents(res.data.data || []);
-    } catch {
+      const res = await eventApi.getEvents(undefined, undefined, signal);
+      if (!signal?.aborted) {
+        setEvents(res.data.data || []);
+      }
+    } catch (err: any) {
+      if (signal?.aborted) return;
       toast.error('Failed to load events');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchEvents();
+    const controller = new AbortController();
+    fetchEvents(controller.signal);
+    return () => controller.abort();
   }, []);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    if (!showForm) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowForm(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showForm]);
 
   const openCreate = () => {
     setEditingEvent(null);
@@ -74,6 +102,8 @@ const AdminEventsPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const payload = {
         date: formDate,
@@ -93,6 +123,8 @@ const AdminEventsPage: React.FC = () => {
       fetchEvents();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save event');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -222,8 +254,14 @@ const AdminEventsPage: React.FC = () => {
 
       {/* Add/Edit Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50"
+          onClick={() => setShowForm(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">
               {editingEvent ? 'Edit Event' : 'Add Event'}
             </h2>
@@ -290,9 +328,10 @@ const AdminEventsPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
                 >
-                  {editingEvent ? 'Save Changes' : 'Add Event'}
+                  {submitting ? 'Saving…' : editingEvent ? 'Save Changes' : 'Add Event'}
                 </button>
               </div>
             </form>

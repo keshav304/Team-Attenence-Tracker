@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { entryApi, holidayApi, eventApi, analyticsApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import type { Entry, Holiday, StatusType, CalendarEvent } from '../types';
@@ -69,7 +69,8 @@ const MyCalendarPage: React.FC = () => {
 
   // ─── Events ──────────────────────────────────
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [eventDetail, setEventDetail] = useState<CalendarEvent | null>(null);
+  const [eventDetailList, setEventDetailList] = useState<CalendarEvent[]>([]);
+  const [eventDetailIdx, setEventDetailIdx] = useState(0);
 
   const days = getDaysInMonth(month);
   const firstDayOfWeek = getDayOfWeek(days[0]);
@@ -77,10 +78,12 @@ const MyCalendarPage: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [entryRes, holidayRes, eventRes] = await Promise.all([
+      const [y, m] = month.split('-').map(Number);
+      const [entryRes, holidayRes, eventRes, pctRes] = await Promise.all([
         entryApi.getMyEntries(days[0], days[days.length - 1]),
         holidayApi.getHolidays(days[0], days[days.length - 1]),
         eventApi.getEvents(days[0], days[days.length - 1]),
+        analyticsApi.getMyPercentage(m, y).catch(() => null),
       ]);
 
       const eMap: Record<string, DayData> = {};
@@ -102,16 +105,11 @@ const MyCalendarPage: React.FC = () => {
 
       setEvents(eventRes.data.data || []);
 
-      // Fetch office percentage from backend
-      const [y, m] = month.split('-').map(Number);
-      try {
-        const pctRes = await analyticsApi.getMyPercentage(m, y);
-        if (pctRes.data.success && pctRes.data.data) {
-          setOfficePercent(pctRes.data.data.officePercent);
-          setPercentOfficeDays(pctRes.data.data.officeDays);
-          setPercentWorkingDays(pctRes.data.data.totalWorkingDays);
-        }
-      } catch {
+      if (pctRes?.data.success && pctRes.data.data) {
+        setOfficePercent(pctRes.data.data.officePercent);
+        setPercentOfficeDays(pctRes.data.data.officeDays);
+        setPercentWorkingDays(pctRes.data.data.totalWorkingDays);
+      } else {
         setOfficePercent(null);
       }
     } catch {
@@ -156,6 +154,18 @@ const MyCalendarPage: React.FC = () => {
     window.addEventListener('mouseup', handler);
     return () => window.removeEventListener('mouseup', handler);
   }, []);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editDate) closeModal();
+        else if (eventDetailList.length > 0) setEventDetailList([]);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [editDate, eventDetailList]);
 
   // Clear selection when clicking outside the calendar area
   useEffect(() => {
@@ -289,11 +299,14 @@ const MyCalendarPage: React.FC = () => {
   const wfhDays = workingDays - officeDays - leaveDays;
 
   // Events lookup: date → events[]
-  const eventsMap: Record<string, CalendarEvent[]> = {};
-  events.forEach((ev) => {
-    if (!eventsMap[ev.date]) eventsMap[ev.date] = [];
-    eventsMap[ev.date].push(ev);
-  });
+  const eventsMap = useMemo(() => {
+    const map: Record<string, CalendarEvent[]> = {};
+    events.forEach((ev) => {
+      if (!map[ev.date]) map[ev.date] = [];
+      map[ev.date].push(ev);
+    });
+    return map;
+  }, [events]);
 
   const formatDateLong = (d: string) => {
     const [y, m, day] = d.split('-').map(Number);
@@ -454,7 +467,7 @@ const MyCalendarPage: React.FC = () => {
                   const dateEvents = eventsMap[date] || [];
                   const hasEvents = dateEvents.length > 0;
                   const isMandatory = dateEvents.some(
-                    (e) => e.eventType === 'mandatory-office' || /mandatory/i.test(e.title)
+                    (e) => e.eventType === 'mandatory-office'
                   );
 
                   // Conflict indicators
@@ -541,7 +554,7 @@ const MyCalendarPage: React.FC = () => {
                           {hasEvents && (
                             <div
                               className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-0.5 cursor-pointer"
-                              onClick={(e) => { e.stopPropagation(); setEventDetail(dateEvents[0]); }}
+                              onClick={(e) => { e.stopPropagation(); setEventDetailList(dateEvents); setEventDetailIdx(0); }}
                             >
                               <div className={`w-1.5 h-1.5 rounded-full ${isMandatory ? 'bg-red-500' : 'bg-amber-500'}`} title={dateEvents.map((ev) => ev.title).join(', ')} />
                               {dateEvents.length > 1 && (
@@ -594,44 +607,74 @@ const MyCalendarPage: React.FC = () => {
       )}
 
       {/* ─── Event Detail Modal ───────────────────── */}
-      {eventDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={() => setEventDetail(null)}>
-          <div
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">📌</span>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{eventDetail.title}</h2>
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-              {formatDateLong(eventDetail.date)}
-            </div>
-            {eventDetail.eventType && (
-              <div className="inline-block px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 mb-3">
-                {eventDetail.eventType}
+      {eventDetailList.length > 0 && (() => {
+        const ev = eventDetailList[eventDetailIdx];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={() => setEventDetailList([])}>
+            <div
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {eventDetailList.length > 1 && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Event {eventDetailIdx + 1} of {eventDetailList.length}
+                </div>
+              )}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xl">📌</span>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{ev.title}</h2>
               </div>
-            )}
-            {eventDetail.description && (
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">{eventDetail.description}</p>
-            )}
-            {eventDetail.createdBy && (
-              <p className="text-xs text-gray-500 dark:text-gray-500">
-                Created by {eventDetail.createdBy.name}
-              </p>
-            )}
-            <div className="flex justify-end mt-4">
-              <button
-                type="button"
-                onClick={() => setEventDetail(null)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
-              >
-                Close
-              </button>
+              <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                {formatDateLong(ev.date)}
+              </div>
+              {ev.eventType && (
+                <div className="inline-block px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 mb-3">
+                  {ev.eventType}
+                </div>
+              )}
+              {ev.description && (
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">{ev.description}</p>
+              )}
+              {ev.createdBy && (
+                <p className="text-xs text-gray-500 dark:text-gray-500">
+                  Created by {ev.createdBy.name || ev.createdBy.email || 'Unknown'}
+                </p>
+              )}
+              <div className="flex justify-between items-center mt-4">
+                <div className="flex gap-2">
+                  {eventDetailList.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEventDetailIdx((i) => Math.max(0, i - 1))}
+                        disabled={eventDetailIdx === 0}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
+                      >
+                        ← Prev
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEventDetailIdx((i) => Math.min(eventDetailList.length - 1, i + 1))}
+                        disabled={eventDetailIdx === eventDetailList.length - 1}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
+                      >
+                        Next →
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEventDetailList([])}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ─── Day Detail Modal ──────────────────── */}
       {editDate && (

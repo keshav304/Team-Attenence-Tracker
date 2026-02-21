@@ -246,11 +246,7 @@ export interface CalendarEvent {
   title: string;
   description?: string;
   eventType?: string;
-  createdBy: {
-    _id: string;
-    name: string;
-    email: string;
-  };
+  createdBy: Pick<User, '_id' | 'name' | 'email'>;
   createdAt: string;
   updatedAt: string;
 }
