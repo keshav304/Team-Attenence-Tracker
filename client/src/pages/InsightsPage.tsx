@@ -97,11 +97,11 @@ const InsightsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">📊 Insights &amp; Analytics</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">📊 Insights &amp; Analytics</h1>
 
-        <div className="flex items-center gap-2">
-          <button onClick={goPrev} className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">◀</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={goPrev} className="px-2.5 py-2 sm:py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">◀</button>
           <select
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
@@ -120,7 +120,7 @@ const InsightsPage: React.FC = () => {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <button onClick={goNext} className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">▶</button>
+          <button onClick={goNext} className="px-2.5 py-2 sm:py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">▶</button>
 
           {/* Export CSV */}
           <button
@@ -144,7 +144,7 @@ const InsightsPage: React.FC = () => {
               }
             }}
             disabled={exporting || loading}
-            className="ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-2 sm:py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             {exporting ? (
               <>
@@ -167,7 +167,7 @@ const InsightsPage: React.FC = () => {
       {!loading && data && (
         <>
           {/* ─── Team Summary Cards ─────────────── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
             <Card label="Employees" value={data.team.totalEmployees} icon="👥" />
             <Card label="Working Days" value={data.totalWorkingDays} icon="📅" />
             <Card label="Total Office Days" value={data.team.totalOfficeDays} icon="🏢" />
@@ -179,9 +179,9 @@ const InsightsPage: React.FC = () => {
           </div>
 
           {/* ─── Day-of-Week Distribution ──────── */}
-          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 transition-colors">
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Office Day Distribution (by weekday)</h2>
-            <div className="flex items-end gap-3 h-40">
+          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-3 sm:p-4 transition-colors">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Office Day Distribution (by weekday)</h2>
+            <div className="flex items-end gap-2 sm:gap-3 h-32 sm:h-40">
               {data.team.officeDayDistribution.map((d) => {
                 const pct = (d.count / maxDist) * 100;
                 return (
@@ -198,14 +198,14 @@ const InsightsPage: React.FC = () => {
           </section>
 
           {/* ─── Daily Office Trend ────────────── */}
-          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 transition-colors">
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Daily Office Attendance Trend</h2>
-            <div className="flex items-end gap-px h-32 overflow-x-auto">
+          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-3 sm:p-4 transition-colors">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Daily Office Attendance Trend</h2>
+            <div className="flex items-end gap-px h-24 sm:h-32 overflow-x-auto">
               {data.dailyOfficeTrend.map((d) => {
                 const pct = (d.count / maxTrend) * 100;
                 const dayNum = d.date.split('-')[2];
                 return (
-                  <div key={d.date} className="flex flex-col items-center flex-shrink-0" style={{ width: 22 }}>
+                  <div key={d.date} className="flex flex-col items-center flex-shrink-0" style={{ width: 18 }}>
                     <span className="text-[10px] text-gray-500 dark:text-gray-400">{d.count}</span>
                     <div
                       className="w-3.5 bg-primary-400 rounded-t"
@@ -238,9 +238,9 @@ const InsightsPage: React.FC = () => {
 
           {/* ─── Employee Metrics Table ─────────── */}
           <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 overflow-hidden transition-colors">
-            <h2 className="text-lg font-semibold p-4 border-b dark:border-gray-700 text-gray-900 dark:text-gray-100">Per-Employee Breakdown</h2>
+            <h2 className="text-base sm:text-lg font-semibold p-3 sm:p-4 border-b dark:border-gray-700 text-gray-900 dark:text-gray-100">Per-Employee Breakdown</h2>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-full text-xs sm:text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-left">
                   <tr>
                     {([
@@ -257,7 +257,7 @@ const InsightsPage: React.FC = () => {
                     ] as [SortKey, string][]).map(([key, label]) => (
                       <th
                         key={key}
-                        className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none whitespace-nowrap"
+                        className="px-2 sm:px-4 py-2 font-medium text-gray-700 dark:text-gray-300 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none whitespace-nowrap"
                         onClick={() => toggleSort(key)}
                       >
                         {label} <span className="text-xs text-gray-400 dark:text-gray-500">{sortIcon(key)}</span>
@@ -268,25 +268,25 @@ const InsightsPage: React.FC = () => {
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {sorted.map((emp) => (
                     <tr key={emp.userId} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                      <td className="px-2 sm:px-4 py-2 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
                         {emp.name}
                         {emp.role === 'admin' && (
                           <span className="ml-1 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1 py-0.5 rounded">A</span>
                         )}
                       </td>
-                      <td className="px-4 py-2 text-center">{emp.officeDays}</td>
-                      <td className="px-4 py-2 text-center">{emp.leaveDays}</td>
-                      <td className="px-4 py-2 text-center">{emp.wfhDays}</td>
-                      <td className={`px-4 py-2 text-center font-semibold ${pctColor(emp.officePercent, true)}`}>
+                      <td className="px-2 sm:px-4 py-2 text-center">{emp.officeDays}</td>
+                      <td className="px-2 sm:px-4 py-2 text-center">{emp.leaveDays}</td>
+                      <td className="px-2 sm:px-4 py-2 text-center">{emp.wfhDays}</td>
+                      <td className={`px-2 sm:px-4 py-2 text-center font-semibold ${pctColor(emp.officePercent, true)}`}>
                         {emp.officePercent}%
                       </td>
-                      <td className={`px-4 py-2 text-center font-semibold ${pctColor(emp.leavePercent, false)}`}>
+                      <td className={`px-2 sm:px-4 py-2 text-center font-semibold ${pctColor(emp.leavePercent, false)}`}>
                         {emp.leavePercent}%
                       </td>
-                      <td className="px-4 py-2 text-center">{emp.wfhPercent}%</td>
-                      <td className="px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.partialDays}</td>
-                      <td className="px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.notesCount}</td>
-                      <td className="px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.totalWorkingDays}</td>
+                      <td className="px-2 sm:px-4 py-2 text-center">{emp.wfhPercent}%</td>
+                      <td className="px-2 sm:px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.partialDays}</td>
+                      <td className="px-2 sm:px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.notesCount}</td>
+                      <td className="px-2 sm:px-4 py-2 text-center text-gray-500 dark:text-gray-400">{emp.totalWorkingDays}</td>
                     </tr>
                   ))}
                   {sorted.length === 0 && (
@@ -306,11 +306,11 @@ const InsightsPage: React.FC = () => {
 
 /* ─── Card sub-component ────────────────────── */
 const Card: React.FC<{ label: string; value: string | number; icon: string }> = ({ label, value, icon }) => (
-  <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 flex items-center gap-3 transition-colors">
-    <span className="text-2xl">{icon}</span>
-    <div>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
+  <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-3 sm:p-4 flex items-center gap-2 sm:gap-3 transition-colors">
+    <span className="text-xl sm:text-2xl">{icon}</span>
+    <div className="min-w-0">
+      <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 truncate">{label}</p>
+      <p className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 truncate">{value}</p>
     </div>
   </div>
 );

@@ -321,16 +321,16 @@ const MyCalendarPage: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Calendar</h1>
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">My Calendar</h1>
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setMonth(offsetMonth(month, -1))}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
           >
             ◀
           </button>
-          <span className="text-lg font-semibold min-w-[180px] text-center">
+          <span className="text-base sm:text-lg font-semibold min-w-[140px] sm:min-w-[180px] text-center">
             {formatMonth(month)}
           </span>
           <button
@@ -341,7 +341,7 @@ const MyCalendarPage: React.FC = () => {
           </button>
           <button
             onClick={() => setMonth(getCurrentMonth())}
-            className="ml-2 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg"
+            className="ml-1 sm:ml-2 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg"
           >
             Today
           </button>
@@ -350,10 +350,10 @@ const MyCalendarPage: React.FC = () => {
 
       {/* Office Percentage Banner */}
       {officePercent !== null && (
-        <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-800/50">
-              <span className="text-2xl font-bold text-blue-700 dark:text-blue-300">{officePercent}%</span>
+        <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-3 sm:p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center justify-center w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-blue-100 dark:bg-blue-800/50 shrink-0">
+              <span className="text-lg sm:text-2xl font-bold text-blue-700 dark:text-blue-300">{officePercent}%</span>
             </div>
             <div>
               <div className="text-sm font-semibold text-blue-800 dark:text-blue-200">In-Office Presence This Month</div>
@@ -370,22 +370,22 @@ const MyCalendarPage: React.FC = () => {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
-          <div className="text-2xl font-bold text-blue-600">{officeDays}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">🏢 Office</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 text-center transition-colors">
+          <div className="text-xl sm:text-2xl font-bold text-blue-600">{officeDays}</div>
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">🏢 Office</div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
-          <div className="text-2xl font-bold text-green-600">{wfhDays}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">🏠 WFH</div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 text-center transition-colors">
+          <div className="text-xl sm:text-2xl font-bold text-green-600">{wfhDays}</div>
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">🏠 WFH</div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
-          <div className="text-2xl font-bold text-orange-600">{leaveDays}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">🌴 Leave</div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 text-center transition-colors">
+          <div className="text-xl sm:text-2xl font-bold text-orange-600">{leaveDays}</div>
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">🌴 Leave</div>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center transition-colors">
-          <div className="text-2xl font-bold text-gray-700 dark:text-gray-300">{workingDays}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Working Days</div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4 text-center transition-colors">
+          <div className="text-xl sm:text-2xl font-bold text-gray-700 dark:text-gray-300">{workingDays}</div>
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">Working Days</div>
         </div>
       </div>
 
@@ -393,11 +393,11 @@ const MyCalendarPage: React.FC = () => {
       <div ref={calendarAreaRef}>
       <div className="flex flex-wrap gap-2 mb-4">
         <button onClick={() => setShowRepeatModal(true)}
-          className="px-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
+          className="px-3 py-2 sm:py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
           🔄 Repeat Pattern
         </button>
         <button onClick={() => setShowCopyRangeModal(true)}
-          className="px-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
+          className="px-3 py-2 sm:py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-300">
           ⚡ Copy Week/Month
         </button>
         {selectedDates.length > 0 && (
@@ -423,17 +423,17 @@ const MyCalendarPage: React.FC = () => {
         onClearSelection={() => setSelectedDates([])}
       />
 
-      <div className="flex gap-4">
+      <div className="flex flex-col lg:flex-row gap-4">
         {/* Calendar */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 transition-colors" ref={calendarRef}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-2 sm:p-4 transition-colors" ref={calendarRef}>
               {/* Weekday headers */}
-              <div className="grid grid-cols-7 gap-1 mb-2">
+              <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1 sm:mb-2">
                 {WEEKDAY_NAMES.map((name) => (
                   <div
                     key={name}
@@ -445,7 +445,7 @@ const MyCalendarPage: React.FC = () => {
               </div>
 
               {/* Calendar grid */}
-              <div className="grid grid-cols-7 gap-1 select-none">
+              <div className="grid grid-cols-7 gap-0.5 sm:gap-1 select-none">
                 {Array.from({ length: firstDayOfWeek }).map((_, i) => (
                   <div key={`empty-${i}`} />
                 ))}
@@ -495,7 +495,7 @@ const MyCalendarPage: React.FC = () => {
                         }
                       }}
                       className={`
-                        relative rounded-lg border p-2 min-h-[80px] transition-all
+                        relative rounded-lg border p-1 sm:p-2 min-h-[60px] sm:min-h-[80px] transition-all
                         ${info.bg}
                         ${today ? 'ring-2 ring-primary-400 ring-offset-1' : ''}
                         ${canEdit ? 'cursor-pointer hover:shadow-md' : ''}
@@ -522,8 +522,8 @@ const MyCalendarPage: React.FC = () => {
                       </div>
                       {!weekend && (
                         <>
-                          <div className="text-lg text-center mt-0.5">{info.emoji}</div>
-                          <div className="text-[10px] text-center font-medium truncate">
+                          <div className="text-base sm:text-lg text-center mt-0.5">{info.emoji}</div>
+                          <div className="text-[9px] sm:text-[10px] text-center font-medium truncate">
                             {holidays[date] ? holidays[date] : info.label}
                           </div>
                           {hasTime && (
@@ -571,13 +571,13 @@ const MyCalendarPage: React.FC = () => {
             </div>
           )}
 
-          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Click a date to edit · Drag to select range · Ctrl+Click for multi-select
+          <p className="mt-3 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+            Click a date to edit<span className="hidden sm:inline"> · Drag to select range · Ctrl+Click for multi-select</span>
           </p>
         </div>
 
         {/* ─── Side Panel: Templates ──────────── */}
-        <div className="w-72 flex-shrink-0 hidden lg:block">
+        <div className="w-full lg:w-72 lg:flex-shrink-0">
           <TemplatesPanel selectedDates={selectedDates} onApplied={() => { fetchData(); setSelectedDates([]); }} />
         </div>
       </div>
@@ -610,9 +610,9 @@ const MyCalendarPage: React.FC = () => {
       {eventDetailList.length > 0 && (() => {
         const ev = eventDetailList[eventDetailIdx];
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={() => setEventDetailList([])}>
+          <div className="responsive-modal-backdrop" onClick={() => setEventDetailList([])}>
             <div
-              className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
+              className="responsive-modal p-5 sm:p-6"
               onClick={(e) => e.stopPropagation()}
             >
               {eventDetailList.length > 1 && (
@@ -678,9 +678,9 @@ const MyCalendarPage: React.FC = () => {
 
       {/* ─── Day Detail Modal ──────────────────── */}
       {editDate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={closeModal}>
+        <div className="responsive-modal-backdrop" onClick={closeModal}>
           <div
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
+            className="responsive-modal p-5 sm:p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
@@ -713,7 +713,7 @@ const MyCalendarPage: React.FC = () => {
                     key={opt.value}
                     type="button"
                     onClick={() => setModalStatus(opt.value)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                    className={`flex-1 py-2.5 sm:py-2 rounded-lg text-sm font-medium border transition-all ${
                       modalStatus === opt.value
                         ? `${opt.bg} ring-2 ${opt.ring} border-transparent`
                         : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'

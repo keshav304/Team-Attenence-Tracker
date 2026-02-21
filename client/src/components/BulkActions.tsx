@@ -86,9 +86,9 @@ export const BulkActionToolbar: React.FC<
   if (selectedDates.length === 0) return null;
 
   return (
-    <div className="bg-white dark:bg-gray-800 border border-primary-200 dark:border-primary-800 rounded-xl shadow-lg p-4 mb-4 animate-in slide-in-from-top transition-colors">
+    <div className="bg-white dark:bg-gray-800 border border-primary-200 dark:border-primary-800 rounded-xl shadow-lg p-3 sm:p-4 mb-4 animate-in slide-in-from-top transition-colors">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">
+        <h3 className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200">
           Bulk Action — {selectedDates.length} date{selectedDates.length > 1 ? 's' : ''} selected
         </h3>
         <button onClick={onClearSelection} className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
@@ -96,7 +96,7 @@ export const BulkActionToolbar: React.FC<
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-3 items-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         {/* Status */}
         <div>
           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Status</label>
@@ -105,7 +105,7 @@ export const BulkActionToolbar: React.FC<
               <button
                 key={s}
                 onClick={() => setStatus(s)}
-                className={`px-3 py-1.5 text-xs rounded-lg border transition-all ${
+                className={`px-3 py-2 sm:py-1.5 text-xs rounded-lg border transition-all ${
                   status === s
                     ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 font-semibold'
                     : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
@@ -142,7 +142,7 @@ export const BulkActionToolbar: React.FC<
         )}
 
         <button onClick={handleApply} disabled={loading}
-          className="px-4 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50">
+          className="px-4 py-2 sm:py-1.5 bg-primary-600 text-white text-xs font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 self-start sm:self-auto">
           {loading ? 'Applying…' : 'Apply'}
         </button>
       </div>
@@ -189,8 +189,8 @@ export const CopyFromDateModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 transition-colors" onClick={(e) => e.stopPropagation()}>
+    <div className="responsive-modal-backdrop" onClick={onClose}>
+      <div className="responsive-modal p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">Copy From Date</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Copy the status, time window, and note from a source date to {selectedDates.length} selected date(s).
@@ -264,8 +264,8 @@ export const RepeatPatternModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors" onClick={(e) => e.stopPropagation()}>
+    <div className="responsive-modal-backdrop" onClick={onClose}>
+      <div className="responsive-modal p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Repeat Pattern</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           Apply a status to specific days of the week across a date range.
@@ -580,8 +580,8 @@ export const CopyRangeModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors" onClick={(e) => e.stopPropagation()}>
+    <div className="responsive-modal-backdrop" onClick={onClose}>
+      <div className="responsive-modal p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Copy Week / Month</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Quickly replicate a previous period's plan.</p>
 

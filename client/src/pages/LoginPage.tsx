@@ -25,15 +25,15 @@ const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 transition-colors">
       <div className="max-w-md w-full">
-        <div className="text-center mb-8">
-          <span className="text-5xl">📍</span>
-          <h1 className="mt-4 text-3xl font-bold text-gray-900 dark:text-gray-100">dhSync</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">Sign in to see your team's availability</p>
+        <div className="text-center mb-6 sm:mb-8">
+          <span className="text-4xl sm:text-5xl">📍</span>
+          <h1 className="mt-3 sm:mt-4 text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">dhSync</h1>
+          <p className="mt-1.5 sm:mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-400">Sign in to see your team's availability</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 space-y-5 transition-colors"
+          className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 sm:p-8 space-y-4 sm:space-y-5 transition-colors"
         >
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
@@ -42,7 +42,7 @@ const LoginPage: React.FC = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-base sm:text-sm"
               placeholder="you@team.com"
             />
           </div>
@@ -54,7 +54,7 @@ const LoginPage: React.FC = () => {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-base sm:text-sm"
               placeholder="••••••••"
             />
           </div>
@@ -62,7 +62,7 @@ const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50"
+            className="w-full py-3 sm:py-2.5 px-4 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 text-base sm:text-sm"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>

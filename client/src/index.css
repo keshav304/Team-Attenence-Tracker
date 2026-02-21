@@ -10,12 +10,17 @@
 @layer base {
   html {
     color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
   }
   html.dark {
     color-scheme: dark;
   }
   body {
     @apply min-h-screen transition-colors duration-200;
+    /* safe-area for notch devices */
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
   /* Form elements dark mode defaults */
@@ -29,6 +34,126 @@
   .dark select:focus {
     @apply ring-primary-500 border-primary-500;
   }
+}
+
+/* ================================================================== */
+/*  Responsive Utilities                                              */
+/* ================================================================== */
+
+/* Touch-friendly minimum tap targets */
+@layer components {
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Responsive modal — near-full-screen on mobile, centered card on desktop */
+  .responsive-modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 dark:bg-black/50;
+  }
+  .responsive-modal {
+    @apply bg-white dark:bg-gray-800 shadow-xl w-full transition-colors
+           rounded-t-2xl sm:rounded-xl
+           max-h-[90vh] sm:max-h-[85vh]
+           sm:max-w-md sm:mx-4
+           overflow-y-auto;
+    animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .responsive-modal-lg {
+    @apply sm:max-w-lg;
+  }
+
+  /* Responsive page header */
+  .page-header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6;
+  }
+  .page-title {
+    @apply text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100;
+  }
+
+  /* Responsive card grid */
+  .card-grid {
+    @apply grid grid-cols-2 gap-2 sm:gap-3 md:gap-4;
+  }
+  .card-grid-4 {
+    @apply grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 md:gap-4;
+  }
+
+  /* Section card */
+  .section-card {
+    @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 transition-colors;
+  }
+
+  /* Responsive table wrapper */
+  .table-responsive {
+    @apply overflow-x-auto -mx-3 sm:mx-0;
+  }
+
+  /* Responsive button group (stacks on mobile) */
+  .btn-group-responsive {
+    @apply flex flex-col sm:flex-row gap-2;
+  }
+
+  /* Primary button with touch target */
+  .btn-primary {
+    @apply px-4 py-2.5 sm:py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 min-h-[44px] sm:min-h-0;
+  }
+  .btn-secondary {
+    @apply px-4 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 transition-colors min-h-[44px] sm:min-h-0;
+  }
+}
+
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(100px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (min-width: 640px) {
+  @keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(24px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+}
+
+/* ================================================================== */
+/*  Mobile Navigation Drawer                                          */
+/* ================================================================== */
+
+.nav-drawer-overlay {
+  @apply fixed inset-0 z-40 bg-black/40 dark:bg-black/60;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.nav-drawer {
+  @apply fixed top-0 left-0 z-50 h-full w-72 max-w-[80vw]
+         bg-white dark:bg-gray-800
+         shadow-2xl
+         flex flex-col;
+  animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-drawer-closing {
+  animation: slideOutLeft 0.2s ease-in forwards;
+}
+
+.nav-drawer-overlay-closing {
+  animation: fadeOut 0.2s ease-in forwards;
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes slideOutLeft {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 
 /* ================================================================== */
@@ -77,12 +202,13 @@
 }
 
 /* Mobile: full-width bottom sheet */
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .chat-panel {
     inset: auto 0 0 0;
     width: 100%;
-    height: 85vh;
+    height: 90vh;
     border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
     animation: chatSlideUpMobile 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
   @keyframes chatSlideUpMobile {
@@ -90,7 +216,16 @@
     to   { opacity: 1; transform: translateY(0); }
   }
   .chat-launcher {
-    @apply bottom-4 right-4 w-12 h-12;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0));
+    @apply right-4 w-14 h-14;
+  }
+}
+@media (min-width: 641px) and (max-width: 768px) {
+  .chat-panel {
+    width: 360px;
+    height: 500px;
+    bottom: 80px;
+    right: 16px;
   }
 }
 

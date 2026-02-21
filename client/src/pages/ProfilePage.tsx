@@ -52,11 +52,11 @@ const ProfilePage: React.FC = () => {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Profile</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4 sm:mb-6">Profile</h1>
 
       {/* Account Info */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6 transition-colors">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Account Info</h2>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-4 sm:mb-6 transition-colors">
+        <h2 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Account Info</h2>
         <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
           <p>
             <span className="font-medium text-gray-700 dark:text-gray-300">Email:</span> {user?.email}
@@ -75,7 +75,7 @@ const ProfilePage: React.FC = () => {
           </p>
         </div>
 
-        <form onSubmit={handleUpdateName} className="flex items-end gap-3">
+        <form onSubmit={handleUpdateName} className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
             <input
@@ -83,13 +83,13 @@ const ProfilePage: React.FC = () => {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2.5 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 text-base sm:text-sm"
             />
           </div>
           <button
             type="submit"
             disabled={savingName}
-            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            className="px-4 py-2.5 sm:py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
           >
             {savingName ? 'Saving...' : 'Update Name'}
           </button>
@@ -97,8 +97,8 @@ const ProfilePage: React.FC = () => {
       </div>
 
       {/* Change Password */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-colors">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Change Password</h2>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 transition-colors">
+        <h2 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Change Password</h2>
         <form onSubmit={handleChangePassword} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -139,7 +139,7 @@ const ProfilePage: React.FC = () => {
           <button
             type="submit"
             disabled={savingPw}
-            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            className="px-4 py-2.5 sm:py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
           >
             {savingPw ? 'Changing...' : 'Change Password'}
           </button>

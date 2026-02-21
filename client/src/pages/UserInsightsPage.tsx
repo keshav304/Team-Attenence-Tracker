@@ -125,11 +125,11 @@ const UserInsightsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">👤 Employee Insights</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">👤 Employee Insights</h1>
 
         <div className="flex items-center gap-2">
-          <button onClick={goPrev} className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">◀</button>
+          <button onClick={goPrev} className="px-2.5 py-2 sm:py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">◀</button>
           <select
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
@@ -148,12 +148,12 @@ const UserInsightsPage: React.FC = () => {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <button onClick={goNext} className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">▶</button>
+          <button onClick={goNext} className="px-2.5 py-2 sm:py-1 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">▶</button>
         </div>
       </div>
 
       {/* User Selector */}
-      <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 transition-colors">
+      <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-3 sm:p-4 transition-colors">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Employee</label>
         <div className="flex flex-col sm:flex-row gap-3">
           <input
@@ -198,12 +198,12 @@ const UserInsightsPage: React.FC = () => {
       {!loading && data && (
         <>
           {/* User header */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 flex items-center gap-4 transition-colors">
-            <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-300 text-lg font-bold">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-3 sm:p-4 flex items-center gap-3 sm:gap-4 transition-colors">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-300 text-base sm:text-lg font-bold shrink-0">
               {data.user.name.charAt(0).toUpperCase()}
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate">
                 {data.user.name}
                 {data.user.role === 'admin' && (
                   <span className="ml-2 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">Admin</span>
@@ -214,7 +214,7 @@ const UserInsightsPage: React.FC = () => {
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">{data.user.email}</p>
             </div>
-            <div className="ml-auto text-right">
+            <div className="ml-auto text-right hidden sm:block">
               <p className="text-xs text-gray-400 dark:text-gray-500">Period</p>
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                 {MONTH_NAMES[data.month - 1]} {data.year}
@@ -223,7 +223,7 @@ const UserInsightsPage: React.FC = () => {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
             <Card label="Working Days" value={data.totalWorkingDays} icon="📅" />
             <Card label="Office Days" value={data.summary.officeDays} icon="🏢" />
             <Card label="Leave Days" value={data.summary.leaveDays} icon="🏖️" />
@@ -249,9 +249,9 @@ const UserInsightsPage: React.FC = () => {
           </div>
 
           {/* Status Distribution mini-chart */}
-          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 transition-colors">
-            <h2 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Day Distribution</h2>
-            <div className="flex items-end gap-4 h-28">
+          <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-3 sm:p-4 transition-colors">
+            <h2 className="text-base sm:text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">Day Distribution</h2>
+            <div className="flex items-end gap-2 sm:gap-4 h-24 sm:h-28">
               {statusCounts.map(({ status, count }) => {
                 const max = Math.max(...statusCounts.map((s) => s.count), 1);
                 const pct = (count / max) * 100;
@@ -288,8 +288,8 @@ const UserInsightsPage: React.FC = () => {
 
           {/* Daily Breakdown Table */}
           <section className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 overflow-hidden transition-colors">
-            <div className="flex flex-wrap items-center justify-between p-4 border-b dark:border-gray-700 gap-3">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Daily Breakdown</h2>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between p-3 sm:p-4 border-b dark:border-gray-700">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">Daily Breakdown</h2>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500 dark:text-gray-400">Filter:</span>
                 <select
@@ -307,14 +307,14 @@ const UserInsightsPage: React.FC = () => {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-full text-xs sm:text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-left">
                   <tr>
-                    <th className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Date</th>
-                    <th className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Day</th>
-                    <th className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Status</th>
-                    <th className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Time</th>
-                    <th className="px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Note</th>
+                    <th className="px-2 sm:px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Date</th>
+                    <th className="px-2 sm:px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Day</th>
+                    <th className="px-2 sm:px-4 py-2 font-medium text-gray-700 dark:text-gray-300">Status</th>
+                    <th className="px-2 sm:px-4 py-2 font-medium text-gray-700 dark:text-gray-300 hidden sm:table-cell">Time</th>
+                    <th className="px-2 sm:px-4 py-2 font-medium text-gray-700 dark:text-gray-300 hidden sm:table-cell">Note</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -325,24 +325,24 @@ const UserInsightsPage: React.FC = () => {
                         key={day.date}
                         className={`${day.isWeekend || day.isHoliday || day.isBeforeJoin ? 'opacity-60' : ''} hover:bg-gray-50 dark:hover:bg-gray-700/50`}
                       >
-                        <td className="px-4 py-2 text-gray-900 dark:text-gray-100 font-mono text-xs whitespace-nowrap">
+                        <td className="px-2 sm:px-4 py-2 text-gray-900 dark:text-gray-100 font-mono text-xs whitespace-nowrap">
                           {day.date}
                         </td>
-                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400 text-xs whitespace-nowrap">
+                        <td className="px-2 sm:px-4 py-2 text-gray-600 dark:text-gray-400 text-xs whitespace-nowrap">
                           {day.dayOfWeek.slice(0, 3)}
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="px-2 sm:px-4 py-2">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
-                            {cfg.emoji} {cfg.label}
+                            {cfg.emoji} <span className="hidden sm:inline">{cfg.label}</span>
                             {day.holidayName && (
-                              <span className="text-[10px] opacity-75 ml-1">({day.holidayName})</span>
+                              <span className="text-[10px] opacity-75 ml-1 hidden sm:inline">({day.holidayName})</span>
                             )}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400 text-xs whitespace-nowrap">
+                        <td className="px-2 sm:px-4 py-2 text-gray-600 dark:text-gray-400 text-xs whitespace-nowrap hidden sm:table-cell">
                           {day.startTime && day.endTime ? `${day.startTime} – ${day.endTime}` : '—'}
                         </td>
-                        <td className="px-4 py-2 text-gray-500 dark:text-gray-400 text-xs max-w-[200px] truncate" title={day.note}>
+                        <td className="px-2 sm:px-4 py-2 text-gray-500 dark:text-gray-400 text-xs max-w-[200px] truncate hidden sm:table-cell" title={day.note}>
                           {day.note || '—'}
                         </td>
                       </tr>
@@ -372,11 +372,11 @@ const Card: React.FC<{ label: string; value: string | number; icon: string; valu
   icon,
   valueClass,
 }) => (
-  <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-4 flex items-center gap-3 transition-colors">
-    <span className="text-2xl">{icon}</span>
-    <div>
-      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className={`text-xl font-bold ${valueClass || 'text-gray-900 dark:text-gray-100'}`}>{value}</p>
+  <div className="bg-white dark:bg-gray-800 rounded-lg shadow dark:shadow-gray-900/20 p-3 sm:p-4 flex items-center gap-2 sm:gap-3 transition-colors">
+    <span className="text-xl sm:text-2xl">{icon}</span>
+    <div className="min-w-0">
+      <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 truncate">{label}</p>
+      <p className={`text-base sm:text-xl font-bold truncate ${valueClass || 'text-gray-900 dark:text-gray-100'}`}>{value}</p>
     </div>
   </div>
 );

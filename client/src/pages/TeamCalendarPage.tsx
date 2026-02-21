@@ -352,13 +352,13 @@ const TeamCalendarPage: React.FC = () => {
   }, [events]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* ─── Header Section (glass panel) ─────────────── */}
-      <div className="glass-panel p-6 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-100">Team Calendar</h1>
-            <div className="flex items-center gap-2">
+      <div className="glass-panel p-3 sm:p-6 space-y-4 sm:space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+            <h1 className="text-xl sm:text-3xl font-semibold text-gray-900 dark:text-gray-100">Team Calendar</h1>
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
               {Object.entries(STATUS_CONFIG)
                 .filter(([key]) => key !== 'weekend')
                 .map(([key, config]) => {
@@ -366,9 +366,10 @@ const TeamCalendarPage: React.FC = () => {
                   return (
                     <Tooltip key={key} text={config.tooltip}>
                       <span
-                        className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium ${config.fullColor} text-white cursor-default`}
+                        className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium ${config.fullColor} text-white cursor-default`}
                       >
-                        <Icon size={14} />
+                        <Icon size={12} className="sm:hidden" />
+                        <Icon size={14} className="hidden sm:block" />
                         {config.label}
                       </span>
                     </Tooltip>
@@ -377,27 +378,27 @@ const TeamCalendarPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1 flex-1 sm:flex-none">
               <button
                 onClick={() => setMonth(offsetMonth(month, -1))}
-                className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-700 dark:text-gray-300"
+                className="p-2 sm:p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-700 dark:text-gray-300"
               >
                 <ChevronLeft size={18} />
               </button>
-              <span className="px-4 font-medium min-w-[160px] text-center text-gray-900 dark:text-gray-100">
+              <span className="px-2 sm:px-4 font-medium min-w-[120px] sm:min-w-[160px] text-center text-sm sm:text-base text-gray-900 dark:text-gray-100">
                 {formatMonth(month)}
               </span>
               <button
                 onClick={() => setMonth(offsetMonth(month, 1))}
-                className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-700 dark:text-gray-300"
+                className="p-2 sm:p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-700 dark:text-gray-300"
               >
                 <ChevronRight size={18} />
               </button>
             </div>
             <button
               onClick={() => setMonth(getCurrentMonth())}
-              className="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-sm font-medium transition-colors text-gray-700 dark:text-gray-300"
+              className="px-3 sm:px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-sm font-medium transition-colors text-gray-700 dark:text-gray-300 whitespace-nowrap"
             >
               Today
             </button>
@@ -405,9 +406,9 @@ const TeamCalendarPage: React.FC = () => {
         </div>
 
         {/* Today's Status Banner */}
-        <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg p-3 flex items-center gap-3 text-blue-700 dark:text-blue-400">
-          <span className="text-base">📌</span>
-          <span className="text-sm font-medium">
+        <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg p-2.5 sm:p-3 flex items-center gap-2 sm:gap-3 text-blue-700 dark:text-blue-400">
+          <span className="text-base shrink-0">📌</span>
+          <span className="text-xs sm:text-sm font-medium leading-relaxed">
             {todayLoading && !todayStatus && "Loading today's status…"}
             {!todayLoading && !todayStatus && "Today's status unavailable"}
             {todayStatus?.isWeekend && "Today's Status: Weekend 🥳 It's the weekend — enjoy your time off!"}
@@ -422,13 +423,13 @@ const TeamCalendarPage: React.FC = () => {
       {/* ─── Filters & Grid Section (glass panel) ─────────────── */}
       <div className="glass-panel overflow-hidden">
         {/* Search & Filter Bar */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-md">
+        <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-800 space-y-3 sm:space-y-0 sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+          <div className="relative w-full sm:flex-1 sm:max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={18} />
             <input
               type="text"
               placeholder="Search by name or email..."
-              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg py-2.5 sm:py-2 pl-10 pr-4 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -442,15 +443,15 @@ const TeamCalendarPage: React.FC = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 dark:text-gray-400">Status on</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">Status on</span>
             <input
               type="date"
               value={filterDate}
               onChange={(e) => setFilterDate(e.target.value)}
               min={days[0]}
               max={days[days.length - 1]}
-              className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-sm w-40 text-gray-700 dark:text-gray-300 focus:outline-none"
+              className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 text-sm w-36 sm:w-40 text-gray-700 dark:text-gray-300 focus:outline-none"
             />
 
             <div className="flex items-center bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-1">
@@ -481,7 +482,7 @@ const TeamCalendarPage: React.FC = () => {
               })}
             </div>
 
-            <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-1 sm:ml-2">
               {filteredTeam.length}/{team.length}
             </span>
             {(searchQuery || statusFilter !== 'all') && (
@@ -516,10 +517,10 @@ const TeamCalendarPage: React.FC = () => {
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-800">
-                  <th className="sticky left-0 bg-white dark:bg-gray-900/80 backdrop-blur-sm z-10 p-4 text-left text-sm font-medium text-gray-500 dark:text-gray-400 min-w-[200px]">
-                    <div className="space-y-1">
-                      <div>Team Member</div>
-                      <div className="text-xs font-normal">Availability</div>
+                  <th className="sticky left-0 bg-white dark:bg-gray-900/80 backdrop-blur-sm z-10 p-2 sm:p-4 text-left text-sm font-medium text-gray-500 dark:text-gray-400 min-w-[130px] sm:min-w-[200px]">
+                    <div className="space-y-0.5 sm:space-y-1">
+                      <div className="text-xs sm:text-sm">Team Member</div>
+                      <div className="text-[10px] sm:text-xs font-normal">Availability</div>
                     </div>
                   </th>
                   {days.map((date) => {
@@ -536,7 +537,7 @@ const TeamCalendarPage: React.FC = () => {
                     return (
                       <th
                         key={date}
-                        className={`p-3 text-center min-w-[100px] ${
+                        className={`p-1.5 sm:p-3 text-center min-w-[56px] sm:min-w-[100px] ${
                           weekend || isHoliday ? 'bg-gray-50 dark:bg-gray-800/30' : ''
                         } ${today ? 'bg-primary-50/50 dark:bg-primary-900/20' : ''} ${
                           isMandatory ? 'bg-red-50 dark:bg-red-900/20' : ''
@@ -592,14 +593,14 @@ const TeamCalendarPage: React.FC = () => {
                         isSelf ? 'bg-primary-50/20 dark:bg-primary-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/20'
                       }`}
                     >
-                      <td className="sticky left-0 bg-white dark:bg-gray-900/80 backdrop-blur-sm z-10 p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-700 dark:text-gray-300">
+                      <td className="sticky left-0 bg-white dark:bg-gray-900/80 backdrop-blur-sm z-10 p-2 sm:p-4">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 shrink-0">
                             {member.user.name.charAt(0).toUpperCase()}
                           </div>
-                          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                          <span className="text-xs sm:text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[70px] sm:max-w-none">
                             {member.user.name}
-                            {isSelf && <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">(You)</span>}
+                            {isSelf && <span className="text-gray-400 dark:text-gray-500 font-normal ml-1 hidden sm:inline">(You)</span>}
                           </span>
                         </div>
                       </td>
@@ -637,10 +638,10 @@ const TeamCalendarPage: React.FC = () => {
                             {!weekend && config && status !== 'weekend' && (
                               <div className="relative">
                                 <div
-                                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border ${config.color} w-full justify-center hover:brightness-110 transition-all`}
+                                  className={`inline-flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border ${config.color} w-full justify-center hover:brightness-110 transition-all`}
                                 >
-                                  {CellIcon && <CellIcon size={14} />}
-                                  <span className="text-xs font-bold uppercase tracking-wider">{config.label}</span>
+                                  {CellIcon && <CellIcon size={12} className="shrink-0" />}
+                                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">{config.label}</span>
                                 </div>
                                 {(hasTime || hasNote) && (
                                   <span className="absolute -top-1 -right-1 flex gap-px">
@@ -654,7 +655,7 @@ const TeamCalendarPage: React.FC = () => {
                             {/* Inline edit popover */}
                             {isEditing && (
                               <div
-                                className="absolute z-20 top-full left-1/2 -translate-x-1/2 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3 flex flex-col gap-2 min-w-[260px] text-left"
+                                className="fixed sm:absolute inset-x-3 bottom-3 sm:inset-auto sm:top-full sm:left-1/2 sm:-translate-x-1/2 sm:mt-1 z-30 sm:z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl sm:rounded-lg shadow-2xl sm:shadow-lg p-4 sm:p-3 flex flex-col gap-2.5 sm:gap-2 sm:min-w-[260px] text-left"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {holidays[editCell.date] && (
@@ -786,8 +787,8 @@ const TeamCalendarPage: React.FC = () => {
 
         {/* Footer */}
         {!loading && (
-          <div className="p-4 bg-gray-50/50 dark:bg-gray-900/50 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-500">
-            <span>Showing {filteredTeam.length} of {team.length} team members · {days.length} days · Click a cell to change status, set hours &amp; add notes · Top row shows daily office/leave/WFH counts</span>
+          <div className="p-3 sm:p-4 bg-gray-50/50 dark:bg-gray-900/50 flex items-center justify-between text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-500">
+            <span className="leading-relaxed">Showing {filteredTeam.length} of {team.length} team members · {days.length} days<span className="hidden sm:inline"> · Click a cell to change status, set hours &amp; add notes · Top row shows daily office/leave/WFH counts</span></span>
           </div>
         )}
       </div>
@@ -795,9 +796,9 @@ const TeamCalendarPage: React.FC = () => {
       {eventDetailList.length > 0 && (() => {
         const eventDetail = eventDetailList[eventDetailIdx];
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 dark:bg-black/50" onClick={() => setEventDetailList([])}>
+          <div className="responsive-modal-backdrop" onClick={() => setEventDetailList([])}>
             <div
-              className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 transition-colors"
+              className="responsive-modal p-5 sm:p-6"
               onClick={(e) => e.stopPropagation()}
             >
               {eventDetailList.length > 1 && (
