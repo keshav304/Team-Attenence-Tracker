@@ -82,7 +82,7 @@ async function generateAnswer(
       'X-Title': 'A-Team-Tracker Assistant',
     },
     body: JSON.stringify({
-      model: 'arcee-ai/trinity-large-preview:free',
+      model: 'openai/gpt-oss-120b:free',
       messages: [
         { role: 'system', content: systemPrompt },
       ],
