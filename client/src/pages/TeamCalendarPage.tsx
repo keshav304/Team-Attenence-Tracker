@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, Component, type ErrorInfo, type ReactNode } from 'react';
 import { entryApi, holidayApi, statusApi, eventApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent } from '../types';
@@ -27,18 +27,40 @@ import {
 
 import type { LucideIcon } from 'lucide-react';
 
+/* ─── Styled Tooltip ──────────────────────────────── */
+const Tooltip: React.FC<{ text: string; children: React.ReactNode; position?: 'top' | 'bottom' }> = ({ text, children, position = 'bottom' }) => (
+  <span className="relative group/tip inline-flex">
+    {children}
+    <span
+      className={`pointer-events-none absolute left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-gray-900 dark:bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-white dark:text-gray-900 shadow-lg opacity-0 scale-95 transition-all duration-150 group-hover/tip:opacity-100 group-hover/tip:scale-100 ${
+        position === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+      }`}
+    >
+      {text}
+      <span
+        className={`absolute left-1/2 -translate-x-1/2 border-4 border-transparent ${
+          position === 'top'
+            ? 'top-full border-t-gray-900 dark:border-t-gray-100'
+            : 'bottom-full border-b-gray-900 dark:border-b-gray-100'
+        }`}
+      />
+    </span>
+  </span>
+);
+
 const STATUS_CONFIG: Record<string, {
   color: string;
   icon: LucideIcon;
   label: string;
   fullColor: string;
   emoji: string;
+  tooltip: string;
 }> = {
-  office: { color: 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: Building2, label: 'Office', fullColor: 'bg-blue-600', emoji: '🏢' },
-  leave: { color: 'bg-green-500/20 text-green-600 dark:text-green-400 border-green-500/30', icon: Palmtree, label: 'Leave', fullColor: 'bg-green-600', emoji: '🌴' },
-  wfh: { color: 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30', icon: Home, label: 'WFH', fullColor: 'bg-amber-600', emoji: '🏠' },
-  holiday: { color: 'bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30', icon: PartyPopper, label: 'Holiday', fullColor: 'bg-red-600', emoji: '🎉' },
-  weekend: { color: 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border-gray-300/30', icon: Home, label: '', fullColor: 'bg-gray-400', emoji: '' },
+  office: { color: 'bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: Building2, label: 'Office', fullColor: 'bg-blue-600', emoji: '🏢', tooltip: 'Working from the office' },
+  leave: { color: 'bg-green-500/20 text-green-600 dark:text-green-400 border-green-500/30', icon: Palmtree, label: 'Leave', fullColor: 'bg-green-600', emoji: '🌴', tooltip: 'On leave / day off' },
+  wfh: { color: 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30', icon: Home, label: 'WFH', fullColor: 'bg-amber-600', emoji: '🏠', tooltip: 'Working from home' },
+  holiday: { color: 'bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30', icon: PartyPopper, label: 'Holiday', fullColor: 'bg-red-600', emoji: '🎉', tooltip: 'Public holiday' },
+  weekend: { color: 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border-gray-300/30', icon: Home, label: '', fullColor: 'bg-gray-400', emoji: '', tooltip: '' },
 };
 
 interface EditCellState {
@@ -48,6 +70,34 @@ interface EditCellState {
   note: string;
   startTime: string;
   endTime: string;
+}
+
+/* ─── Error Boundary ──────────────────────────────── */
+interface EBProps { children: ReactNode }
+interface EBState { hasError: boolean }
+
+class TeamCalendarErrorBoundary extends Component<EBProps, EBState> {
+  state: EBState = { hasError: false };
+  static getDerivedStateFromError(): EBState { return { hasError: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[TeamCalendar] Render error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <p className="text-gray-500 dark:text-gray-400">Something went wrong displaying the calendar.</p>
+          <button
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm"
+            onClick={() => this.setState({ hasError: false })}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 const TeamCalendarPage: React.FC = () => {
@@ -72,7 +122,7 @@ const TeamCalendarPage: React.FC = () => {
   const [eventDetailList, setEventDetailList] = useState<CalendarEvent[]>([]);
   const [eventDetailIdx, setEventDetailIdx] = useState(0);
 
-  const days = getDaysInMonth(month);
+  const days = useMemo(() => getDaysInMonth(month), [month]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollWeek = (direction: 'left' | 'right') => {
@@ -86,31 +136,42 @@ const TeamCalendarPage: React.FC = () => {
   };
 
   const filteredTeam = useMemo(() => {
-    let result = team;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (m) => m.user.name.toLowerCase().includes(q) || m.user.email.toLowerCase().includes(q)
-      );
-    }
-    if (statusFilter !== 'all') {
-      if (filterDate) {
-        // Filter by status on the specific chosen date
-        result = result.filter((m) => {
-          const effective = getEffectiveStatusForFilter(m.entries, filterDate);
-          return effective === statusFilter;
-        });
-      } else {
-        // No date chosen — show members who have this status on ANY weekday in the month
-        result = result.filter((m) =>
-          days.some((d) => {
-            if (isWeekend(d) || holidays[d]) return false;
-            return getEffectiveStatusForFilter(m.entries, d) === statusFilter;
-          })
+    try {
+      let result = team;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        result = result.filter(
+          (m) => m.user.name.toLowerCase().includes(q) || m.user.email.toLowerCase().includes(q)
         );
       }
+      if (statusFilter !== 'all') {
+        if (filterDate) {
+          // Filter by status on the specific chosen date
+          result = result.filter((m) => {
+            const entries = m.entries ?? {};
+            if (isWeekend(filterDate) || holidays[filterDate]) return statusFilter === 'wfh';
+            const status = entries[filterDate]?.status;
+            const effective: string = status || 'wfh';
+            return effective === statusFilter;
+          });
+        } else {
+          // No date chosen — show members who have this status on ANY weekday in the month
+          result = result.filter((m) => {
+            const entries = m.entries ?? {};
+            return days.some((d) => {
+              if (isWeekend(d) || holidays[d]) return false;
+              const status = entries[d]?.status;
+              const effective: string = status || 'wfh';
+              return effective === statusFilter;
+            });
+          });
+        }
+      }
+      return result;
+    } catch (err) {
+      console.error('[TeamCalendar] Filter error:', err);
+      return team;
     }
-    return result;
   }, [team, searchQuery, statusFilter, filterDate, holidays, days]);
 
   const fetchData = useCallback(async () => {
@@ -136,7 +197,7 @@ const TeamCalendarPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, days]);
 
   const fetchTodayStatus = useCallback(async () => {
     setTodayLoading(true);
@@ -303,13 +364,14 @@ const TeamCalendarPage: React.FC = () => {
                 .map(([key, config]) => {
                   const Icon = config.icon;
                   return (
-                    <span
-                      key={key}
-                      className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium ${config.fullColor} text-white`}
-                    >
-                      <Icon size={14} />
-                      {config.label}
-                    </span>
+                    <Tooltip key={key} text={config.tooltip}>
+                      <span
+                        className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium ${config.fullColor} text-white cursor-default`}
+                      >
+                        <Icon size={14} />
+                        {config.label}
+                      </span>
+                    </Tooltip>
                   );
                 })}
             </div>
@@ -400,18 +462,21 @@ const TeamCalendarPage: React.FC = () => {
               ] as const).map((opt) => {
                 const Icon = opt.icon;
                 return (
-                  <button
+                  <Tooltip
                     key={opt.value}
-                    onClick={() => setStatusFilter(opt.value)}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                      statusFilter === opt.value
-                        ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-                        : 'text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                    }`}
-                    title={opt.value === 'all' ? 'Show all' : `Show ${opt.value} only`}
+                    text={opt.value === 'all' ? 'Show all statuses' : `Filter: ${opt.value === 'wfh' ? 'Work from Home' : opt.value === 'office' ? 'Office' : 'Leave'} only`}
                   >
-                    {opt.label ? opt.label : Icon && <Icon size={14} />}
-                  </button>
+                    <button
+                      onClick={() => setStatusFilter(opt.value)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                        statusFilter === opt.value
+                          ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                          : 'text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      {opt.label ? opt.label : Icon && <Icon size={14} />}
+                    </button>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -802,4 +867,12 @@ const TeamCalendarPage: React.FC = () => {
   );
 };
 
-export default TeamCalendarPage;
+function TeamCalendarPageWithBoundary() {
+  return (
+    <TeamCalendarErrorBoundary>
+      <TeamCalendarPage />
+    </TeamCalendarErrorBoundary>
+  );
+}
+
+export default TeamCalendarPageWithBoundary;
