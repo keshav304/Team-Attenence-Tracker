@@ -792,7 +792,7 @@ const TeamCalendarPage: React.FC = () => {
           </div>
         )}
       </div>
-      {/* Event Detail Modal */}
+      {/* Event Detail Modal Section*/}
       {eventDetailList.length > 0 && (() => {
         const eventDetail = eventDetailList[eventDetailIdx];
         return (
