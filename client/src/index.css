@@ -284,3 +284,405 @@
   85%  { opacity: 1; transform: translate(-50%, 0); }
   100% { opacity: 0; transform: translate(-50%, -4px); }
 }
+
+/* ── Chat back button ─────────────────────── */
+.chat-back-btn {
+  @apply flex items-center justify-center
+         w-8 h-8 rounded-lg mr-1
+         text-gray-400 dark:text-gray-500
+         hover:bg-gray-200 dark:hover:bg-gray-700
+         hover:text-gray-600 dark:hover:text-gray-300
+         transition-colors;
+}
+
+/* ================================================================== */
+/*  Mode Selector                                                     */
+/* ================================================================== */
+
+.mode-selector {
+  @apply flex flex-col items-center justify-center h-full text-center px-6 py-8 gap-5;
+}
+.mode-selector-icon {
+  @apply text-primary-500 dark:text-primary-400;
+}
+.mode-selector-title {
+  @apply text-lg font-semibold text-gray-800 dark:text-gray-200;
+}
+.mode-selector-options {
+  @apply flex flex-col gap-3 w-full mt-2;
+}
+
+.mode-option {
+  @apply w-full flex items-start gap-3 px-4 py-3.5 rounded-xl
+         border border-gray-200 dark:border-gray-600
+         bg-white dark:bg-gray-700/50
+         text-left
+         hover:shadow-md
+         transition-all duration-200;
+}
+.mode-option--chat:hover {
+  @apply border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-900/20;
+}
+.mode-option--workbot:hover {
+  @apply border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20;
+}
+
+.mode-option-emoji {
+  @apply text-2xl mt-0.5 shrink-0;
+}
+.mode-option-label {
+  @apply block text-sm font-semibold text-gray-800 dark:text-gray-200;
+}
+.mode-option-desc {
+  @apply block text-xs text-gray-500 dark:text-gray-400 mt-0.5;
+}
+
+/* ================================================================== */
+/*  Voice Input                                                       */
+/* ================================================================== */
+
+.voice-input-container {
+  @apply relative flex items-center;
+}
+
+.voice-btn {
+  @apply flex items-center justify-center
+         w-8 h-8 rounded-lg shrink-0
+         transition-all duration-200;
+}
+
+.voice-btn--idle {
+  @apply text-gray-400 dark:text-gray-500
+         hover:text-primary-600 dark:hover:text-primary-400
+         hover:bg-gray-200 dark:hover:bg-gray-600;
+}
+
+.voice-btn--listening {
+  @apply text-white bg-red-500
+         shadow-lg shadow-red-500/40;
+  animation: voicePulse 1.5s ease-in-out infinite;
+}
+
+.voice-btn--processing {
+  @apply text-gray-400 dark:text-gray-500 cursor-wait;
+}
+
+.voice-btn--error {
+  @apply text-red-500 dark:text-red-400;
+}
+
+@keyframes voicePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50%      { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+.voice-spinner {
+  animation: spin360 1s linear infinite;
+}
+@keyframes spin360 {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.voice-label {
+  @apply absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap
+         text-[10px] font-medium px-2 py-0.5 rounded
+         bg-gray-800 dark:bg-gray-200
+         text-white dark:text-gray-800
+         shadow-sm;
+}
+
+.voice-error {
+  @apply absolute -top-8 right-0 whitespace-nowrap
+         text-[10px] font-medium px-2 py-1 rounded
+         bg-red-100 dark:bg-red-900/50
+         text-red-700 dark:text-red-300
+         shadow-sm max-w-[220px] text-right;
+}
+
+/* ================================================================== */
+/*  Workbot Overlay                                                   */
+/* ================================================================== */
+
+.workbot-overlay {
+  @apply fixed inset-0 z-50
+         flex flex-col
+         bg-white dark:bg-gray-900;
+  animation: workbotSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes workbotSlideIn {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Workbot Header ── */
+.workbot-header {
+  @apply flex items-center gap-3 px-5 py-3.5
+         border-b border-gray-200 dark:border-gray-700
+         bg-white dark:bg-gray-800
+         shrink-0;
+}
+.workbot-back-btn {
+  @apply flex items-center justify-center
+         w-9 h-9 rounded-lg
+         text-gray-500 dark:text-gray-400
+         hover:bg-gray-100 dark:hover:bg-gray-700
+         transition-colors;
+}
+.workbot-header-info {
+  @apply flex items-center gap-3 flex-1;
+}
+.workbot-header-icon {
+  @apply flex items-center justify-center
+         w-10 h-10 rounded-full
+         bg-amber-100 dark:bg-amber-900/40
+         text-amber-600 dark:text-amber-400;
+}
+.workbot-header-title {
+  @apply text-base font-semibold text-gray-900 dark:text-gray-100;
+}
+.workbot-header-subtitle {
+  @apply text-xs text-gray-500 dark:text-gray-400;
+}
+.workbot-reset-btn {
+  @apply flex items-center justify-center
+         w-9 h-9 rounded-lg
+         text-gray-400 dark:text-gray-500
+         hover:bg-gray-100 dark:hover:bg-gray-700
+         hover:text-gray-600 dark:hover:text-gray-300
+         transition-colors;
+}
+
+/* ── Workbot Content ── */
+.workbot-content {
+  @apply flex-1 overflow-y-auto px-5 py-6;
+}
+
+/* ── Input Phase ── */
+.workbot-input-phase {
+  @apply flex flex-col items-center justify-center h-full gap-6 max-w-2xl mx-auto;
+}
+
+.workbot-examples {
+  @apply text-center;
+}
+.workbot-examples-label {
+  @apply text-sm text-gray-500 dark:text-gray-400 mb-3;
+}
+.workbot-examples-list {
+  @apply flex flex-wrap justify-center gap-2;
+}
+.workbot-example-chip {
+  @apply inline-flex text-xs px-3 py-2 rounded-xl
+         border border-gray-200 dark:border-gray-600
+         text-gray-600 dark:text-gray-300
+         bg-white dark:bg-gray-800
+         hover:bg-amber-50 dark:hover:bg-amber-900/20
+         hover:border-amber-300 dark:hover:border-amber-700
+         hover:text-amber-700 dark:hover:text-amber-300
+         transition-all cursor-pointer;
+}
+
+.workbot-input-form {
+  @apply w-full;
+}
+.workbot-input-wrapper {
+  @apply flex flex-col gap-2
+         bg-gray-50 dark:bg-gray-800
+         border border-gray-200 dark:border-gray-700
+         rounded-xl p-3;
+}
+.workbot-textarea {
+  @apply w-full bg-transparent border-none resize-none
+         text-sm text-gray-800 dark:text-gray-200
+         placeholder-gray-400 dark:placeholder-gray-500
+         focus:outline-none focus:ring-0;
+  min-height: 72px;
+  line-height: 1.5;
+}
+.workbot-input-actions {
+  @apply flex items-center justify-end gap-2;
+}
+.workbot-submit-btn {
+  @apply flex items-center justify-center
+         w-10 h-10 rounded-lg
+         bg-amber-500 text-white
+         hover:bg-amber-600
+         focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:outline-none
+         disabled:opacity-40 disabled:cursor-not-allowed
+         transition-colors;
+}
+
+/* ── Processing ── */
+.workbot-processing {
+  @apply flex flex-col items-center justify-center h-full gap-4 text-center;
+}
+.workbot-spinner {
+  @apply w-10 h-10 border-4 border-gray-200 dark:border-gray-700 border-t-amber-500 rounded-full;
+  animation: spin360 0.8s linear infinite;
+}
+.workbot-processing-text {
+  @apply text-sm font-medium text-gray-600 dark:text-gray-400;
+}
+.workbot-processing-summary {
+  @apply text-xs text-gray-400 dark:text-gray-500 italic;
+}
+
+/* ── Preview ── */
+.workbot-preview {
+  @apply flex flex-col gap-4 max-w-4xl mx-auto;
+}
+.workbot-summary-bar {
+  @apply flex items-center gap-2 px-4 py-2.5 rounded-lg
+         bg-amber-50 dark:bg-amber-900/20
+         border border-amber-200 dark:border-amber-800
+         text-sm text-amber-800 dark:text-amber-200;
+}
+.workbot-summary-icon {
+  @apply shrink-0;
+}
+
+.workbot-table-wrapper {
+  @apply overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700;
+}
+.workbot-table {
+  @apply w-full text-sm;
+}
+.workbot-table thead {
+  @apply bg-gray-50 dark:bg-gray-800;
+}
+.workbot-table th {
+  @apply px-3 py-2 text-left text-xs font-medium
+         text-gray-500 dark:text-gray-400
+         uppercase tracking-wider
+         border-b border-gray-200 dark:border-gray-700;
+}
+.workbot-table td {
+  @apply px-3 py-2 border-b border-gray-100 dark:border-gray-800
+         text-gray-700 dark:text-gray-300;
+}
+
+.workbot-row--invalid {
+  @apply opacity-50;
+}
+.workbot-row--selected {
+  @apply bg-amber-50/50 dark:bg-amber-900/10;
+}
+.workbot-cell-date {
+  @apply font-mono text-xs;
+}
+
+.workbot-status-select {
+  @apply text-xs px-2 py-1 rounded border
+         border-gray-200 dark:border-gray-600
+         bg-white dark:bg-gray-700
+         text-gray-700 dark:text-gray-300
+         focus:ring-1 focus:ring-amber-400;
+}
+
+.workbot-invalid-badge {
+  @apply inline-block text-[10px] px-1.5 py-0.5 rounded
+         bg-red-100 dark:bg-red-900/40
+         text-red-600 dark:text-red-400;
+}
+
+.workbot-note-input {
+  @apply text-xs px-2 py-1 rounded border w-full min-w-[100px]
+         border-gray-200 dark:border-gray-600
+         bg-white dark:bg-gray-700
+         text-gray-700 dark:text-gray-300
+         focus:ring-1 focus:ring-amber-400 focus:outline-none;
+}
+
+.workbot-remove-btn {
+  @apply flex items-center justify-center
+         w-7 h-7 rounded
+         text-gray-400 dark:text-gray-500
+         hover:text-red-500 dark:hover:text-red-400
+         hover:bg-red-50 dark:hover:bg-red-900/20
+         transition-colors;
+}
+
+.workbot-preview-footer {
+  @apply flex items-center justify-between flex-wrap gap-3 pt-3;
+}
+.workbot-selection-count {
+  @apply text-sm font-medium text-gray-600 dark:text-gray-400;
+}
+.workbot-preview-actions {
+  @apply flex items-center gap-2;
+}
+
+/* ── Workbot Buttons ── */
+.workbot-btn {
+  @apply px-4 py-2 rounded-lg text-sm font-medium
+         transition-colors cursor-pointer
+         disabled:opacity-40 disabled:cursor-not-allowed;
+}
+.workbot-btn--primary {
+  @apply bg-amber-500 text-white hover:bg-amber-600
+         focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:outline-none;
+}
+.workbot-btn--secondary {
+  @apply bg-gray-100 dark:bg-gray-700
+         text-gray-700 dark:text-gray-300
+         hover:bg-gray-200 dark:hover:bg-gray-600;
+}
+
+/* ── Done Phase ── */
+.workbot-done {
+  @apply flex flex-col items-center justify-center h-full gap-4 text-center;
+}
+.workbot-done-icon {
+  @apply text-emerald-500 dark:text-emerald-400;
+}
+.workbot-done-title {
+  @apply text-xl font-bold text-gray-800 dark:text-gray-200;
+}
+.workbot-done-summary {
+  @apply text-sm text-gray-600 dark:text-gray-400;
+}
+.workbot-done-errors {
+  @apply mt-2 p-3 rounded-lg
+         bg-red-50 dark:bg-red-900/20
+         border border-red-200 dark:border-red-800
+         text-left;
+}
+.workbot-done-error-line {
+  @apply text-xs text-red-600 dark:text-red-400;
+}
+.workbot-done-actions {
+  @apply flex gap-3 mt-4;
+}
+
+/* ── Error Phase ── */
+.workbot-error-phase {
+  @apply flex flex-col items-center justify-center h-full gap-4 text-center;
+}
+.workbot-error-icon {
+  @apply text-red-400 dark:text-red-500;
+}
+.workbot-error-text {
+  @apply text-sm text-gray-700 dark:text-gray-300 max-w-md;
+}
+.workbot-error-actions {
+  @apply flex gap-3 mt-2;
+}
+
+/* ── Responsive: Workbot on smaller screens ── */
+@media (max-width: 640px) {
+  .workbot-content {
+    @apply px-3 py-4;
+  }
+  .workbot-table th,
+  .workbot-table td {
+    @apply px-2 py-1.5 text-xs;
+  }
+  .workbot-preview-footer {
+    @apply flex-col items-stretch;
+  }
+  .workbot-preview-actions {
+    @apply flex-wrap justify-end;
+  }
+}

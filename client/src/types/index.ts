@@ -197,3 +197,44 @@ export interface TodayStatusResponse {
   leave: TodayStatusPerson[];
   wfh: TodayStatusPerson[];
 }
+
+// ─── Workbot / Schedule Assistant ────────────
+export type WorkbotStatus = StatusType | 'clear';
+
+export type WorkbotAction =
+  | { type: 'set'; status: WorkbotStatus; dateExpressions: string[]; note?: string }
+  | { type: 'clear'; dateExpressions: string[]; note?: string };
+
+export interface WorkbotPlan {
+  actions: WorkbotAction[];
+  summary: string;
+}
+
+export interface WorkbotResolvedChange {
+  date: string;
+  day: string;
+  status: WorkbotStatus;
+  note?: string;
+  valid: boolean;
+  validationMessage?: string;
+  /** Client-side: whether user has selected this row (default: valid rows) */
+  selected?: boolean;
+}
+
+export interface WorkbotResolveResponse {
+  changes: WorkbotResolvedChange[];
+  validCount: number;
+  invalidCount: number;
+}
+
+export interface WorkbotApplyItem {
+  date: string;
+  status: WorkbotStatus;
+  note?: string;
+}
+
+export interface WorkbotApplyResult {
+  processed: number;
+  failed: number;
+  results: BulkResultItem[];
+}

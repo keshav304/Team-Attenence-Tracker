@@ -10,18 +10,33 @@ export const formatMonth = (yearMonth: string): string => {
 };
 
 /**
- * Get today as YYYY-MM-DD.
+ * Format a Date as YYYY-MM-DD in IST (Asia/Kolkata, UTC+5:30).
+ * Works correctly regardless of the browser's local timezone.
  */
-export const getTodayString = (): string => {
-  return new Date().toISOString().split('T')[0];
+const istFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Kolkata',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+export const toISTDateString = (d: Date): string => {
+  // en-CA locale produces YYYY-MM-DD natively
+  return istFormatter.format(d);
 };
 
 /**
- * Get current month as YYYY-MM.
+ * Get today as YYYY-MM-DD (IST).
+ */
+export const getTodayString = (): string => {
+  return toISTDateString(new Date());
+};
+
+/**
+ * Get current month as YYYY-MM in IST.
  */
 export const getCurrentMonth = (): string => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return getTodayString().slice(0, 7);
 };
 
 /**
@@ -92,22 +107,21 @@ export const getDayNumber = (dateStr: string): number => {
 };
 
 /**
- * Get first day of current month as YYYY-MM-DD.
+ * Get first day of current month as YYYY-MM-DD in IST.
  */
 export const getStartOfCurrentMonth = (): string => {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  return `${yyyy}-${mm}-01`;
+  const today = getTodayString(); // IST-based YYYY-MM-DD
+  return today.slice(0, 8) + '01';
 };
 
 /**
- * Planning window max date (today + 90 days).
+ * Planning window max date (today + 90 days, IST).
  */
 export const getMaxPlanDate = (): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + 90);
-  return d.toISOString().split('T')[0];
+  // Anchor to the current IST date to avoid 1-day drift for users behind IST
+  const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  nowIST.setDate(nowIST.getDate() + 90);
+  return toISTDateString(nowIST);
 };
 
 /**

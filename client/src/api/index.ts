@@ -13,6 +13,11 @@ import type {
   InsightsResponse,
   UserInsightsResponse,
   TodayStatusResponse,
+  WorkbotPlan,
+  WorkbotAction,
+  WorkbotResolveResponse,
+  WorkbotApplyItem,
+  WorkbotApplyResult,
 } from '../types';
 
 // ─── Auth ────────────────────────────────────
@@ -150,4 +155,19 @@ export interface ChatResponse {
 export const chatApi = {
   ask: (question: string) =>
     api.post<ChatResponse>('/chat', { question }),
+};
+
+// ─── Workbot ─────────────────────────────────
+export const workbotApi = {
+  /** Step 1: Parse natural-language command into structured plan */
+  parse: (command: string) =>
+    api.post<ApiResponse<WorkbotPlan>>('/workbot/parse', { command }),
+
+  /** Step 2: Resolve plan actions into concrete dated changes */
+  resolve: (actions: WorkbotAction[]) =>
+    api.post<ApiResponse<WorkbotResolveResponse>>('/workbot/resolve', { actions }),
+
+  /** Step 3: Apply confirmed changes */
+  apply: (changes: WorkbotApplyItem[]) =>
+    api.post<ApiResponse<WorkbotApplyResult>>('/workbot/apply', { changes }),
 };

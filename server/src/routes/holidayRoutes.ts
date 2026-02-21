@@ -6,6 +6,10 @@ import {
   deleteHoliday,
 } from '../controllers/holidayController.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import {
+  validateCreateHoliday,
+  validateUpdateHoliday,
+} from '../middleware/holidayValidation.js';
 
 const router = Router();
 
@@ -13,8 +17,8 @@ const router = Router();
 router.get('/', authenticate, getHolidays);
 
 // Only admins can manage holidays
-router.post('/', authenticate, requireAdmin, createHoliday);
-router.put('/:id', authenticate, requireAdmin, updateHoliday);
+router.post('/', authenticate, requireAdmin, validateCreateHoliday, createHoliday);
+router.put('/:id', authenticate, requireAdmin, validateUpdateHoliday, updateHoliday);
 router.delete('/:id', authenticate, requireAdmin, deleteHoliday);
 
 export default router;

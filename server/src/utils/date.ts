@@ -1,17 +1,31 @@
 /**
- * Get today's date as YYYY-MM-DD string (UTC).
+ * Format a Date as YYYY-MM-DD in IST (Asia/Kolkata, UTC+5:30).
+ * Works correctly regardless of the server's local timezone.
  */
-export const getTodayString = (): string => {
-  return new Date().toISOString().split('T')[0];
+export const toISTDateString = (d: Date): string => {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const utcMs = d.getTime() + d.getTimezoneOffset() * 60000;
+  const ist = new Date(utcMs + IST_OFFSET_MS);
+  const yyyy = ist.getFullYear();
+  const mm = String(ist.getMonth() + 1).padStart(2, '0');
+  const dd = String(ist.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 /**
- * Get date string N days from today.
+ * Get today's date as YYYY-MM-DD string in IST.
+ */
+export const getTodayString = (): string => {
+  return toISTDateString(new Date());
+};
+
+/**
+ * Get date string N days from today (IST).
  */
 export const getFutureDateString = (days: number): string => {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return toISTDateString(d);
 };
 
 /**
@@ -22,13 +36,11 @@ export const isPastDate = (dateStr: string): boolean => {
 };
 
 /**
- * Get the first day of the current month as YYYY-MM-DD.
+ * Get the first day of the current month as YYYY-MM-DD in IST.
  */
 export const getStartOfCurrentMonth = (): string => {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  return `${yyyy}-${mm}-01`;
+  const today = getTodayString(); // IST-based YYYY-MM-DD
+  return today.slice(0, 8) + '01';
 };
 
 /**

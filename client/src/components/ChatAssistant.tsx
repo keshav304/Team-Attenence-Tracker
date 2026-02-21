@@ -7,6 +7,8 @@ import React, {
   type FormEvent,
 } from 'react';
 import { chatApi, type ChatResponse } from '../api';
+import VoiceInput from './VoiceInput';
+import Workbot from './Workbot';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -25,6 +27,9 @@ interface ChatAssistantProps {
   /** Optional: current page name to include as context */
   pageName?: string;
 }
+
+/** The three views the assistant can show */
+type AssistantView = 'mode-select' | 'chatbot' | 'workbot';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -88,12 +93,15 @@ const MessageBubble: React.FC<{ msg: Message; onCopy: (text: string) => void }> 
           } ${msg.error ? 'chat-bubble--error' : ''}`}
         >
           {/* Render multi-paragraph text */}
-          {msg.text.split('\n').map((line, i) => (
-            <React.Fragment key={i}>
-              {line}
-              {i < msg.text.split('\n').length - 1 && <br />}
-            </React.Fragment>
-          ))}
+          {(() => {
+            const lines = msg.text.split('\n');
+            return lines.map((line, i) => (
+              <React.Fragment key={i}>
+                {line}
+                {i < lines.length - 1 && <br />}
+              </React.Fragment>
+            ));
+          })()}
         </div>
 
         {/* Copy button for assistant messages */}
@@ -126,6 +134,33 @@ const MessageBubble: React.FC<{ msg: Message; onCopy: (text: string) => void }> 
   );
 };
 
+/** Mode selection panel */
+const ModeSelector: React.FC<{
+  onSelectChat: () => void;
+  onSelectWorkbot: () => void;
+}> = ({ onSelectChat, onSelectWorkbot }) => (
+  <div className="mode-selector">
+    <div className="mode-selector-icon" aria-hidden="true">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
+      </svg>
+    </div>
+    <h3 className="mode-selector-title">How can I help?</h3>
+    <div className="mode-selector-options">
+      <button className="mode-option mode-option--chat" onClick={onSelectChat}>
+        <span className="mode-option-emoji" aria-hidden="true">💬</span>
+        <span className="mode-option-label">Ask a Question</span>
+        <span className="mode-option-desc">Get help about using the app</span>
+      </button>
+      <button className="mode-option mode-option--workbot" onClick={onSelectWorkbot}>
+        <span className="mode-option-emoji" aria-hidden="true">⚙️</span>
+        <span className="mode-option-label">Update My Schedule</span>
+        <span className="mode-option-desc">Use natural language to change your calendar</span>
+      </button>
+    </div>
+  </div>
+);
+
 /* ------------------------------------------------------------------ */
 /*  Main component                                                    */
 /* ------------------------------------------------------------------ */
@@ -138,6 +173,8 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
       return false;
     }
   });
+
+  const [view, setView] = useState<AssistantView>('mode-select');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -161,16 +198,25 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Focus input when opened
+  // Focus input when chatbot opened
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 150);
+    if (isOpen && view === 'chatbot') {
+      const tid = setTimeout(() => inputRef.current?.focus(), 150);
+      return () => clearTimeout(tid);
     }
-  }, [isOpen]);
+  }, [isOpen, view]);
 
   // ------ Actions ------
 
-  const togglePanel = useCallback(() => setIsOpen((o) => !o), []);
+  const togglePanel = useCallback(() => {
+    setIsOpen((o) => {
+      if (o) {
+        // Closing: reset to mode select for next open
+        setView('mode-select');
+      }
+      return !o;
+    });
+  }, []);
 
   const handleCopy = useCallback(async (text: string) => {
     try {
@@ -268,6 +314,11 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   };
 
+  // Voice transcript handler
+  const handleVoiceTranscript = useCallback((text: string) => {
+    setInput((prev) => (prev ? prev + ' ' + text : text));
+  }, []);
+
   // ------ Render ------
 
   return (
@@ -276,24 +327,27 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
       <button
         className={`chat-launcher ${isOpen ? 'chat-launcher--open' : ''}`}
         onClick={togglePanel}
-        aria-label={isOpen ? 'Close help assistant' : 'Ask for help'}
-        title={isOpen ? 'Close assistant' : 'Ask for help'}
+        aria-label={isOpen ? 'Close assistant' : 'Open assistant'}
+        title={isOpen ? 'Close assistant' : 'Open assistant'}
       >
         {isOpen ? (
-          /* Close icon */
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         ) : (
-          /* Chat bubble icon */
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z" />
           </svg>
         )}
       </button>
 
-      {/* ── Chat panel ── */}
-      {isOpen && (
+      {/* ── Workbot fullscreen overlay ── */}
+      {isOpen && view === 'workbot' && (
+        <Workbot onBack={() => setView('mode-select')} />
+      )}
+
+      {/* ── Chat panel (mode-select or chatbot) ── */}
+      {isOpen && view !== 'workbot' && (
         <div
           ref={panelRef}
           className="chat-panel"
@@ -303,18 +357,36 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
           {/* Header */}
           <div className="chat-header">
             <div className="chat-header-info">
+              {view === 'chatbot' && (
+                <button
+                  className="chat-back-btn"
+                  onClick={() => setView('mode-select')}
+                  aria-label="Back to mode selection"
+                  title="Back"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                </button>
+              )}
               <div className="chat-header-avatar" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
                 </svg>
               </div>
               <div>
-                <h2 className="chat-header-title">Help Assistant</h2>
-                <p className="chat-header-subtitle">Ask anything about using the app</p>
+                <h2 className="chat-header-title">
+                  {view === 'mode-select' ? 'Assistant' : 'Help Assistant'}
+                </h2>
+                <p className="chat-header-subtitle">
+                  {view === 'mode-select'
+                    ? 'Choose what you need'
+                    : 'Ask anything about using the app'}
+                </p>
               </div>
             </div>
             <div className="chat-header-actions">
-              {messages.length > 0 && (
+              {view === 'chatbot' && messages.length > 0 && (
                 <button
                   className="chat-header-btn"
                   onClick={clearChat}
@@ -330,7 +402,7 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
                 className="chat-header-btn"
                 onClick={togglePanel}
                 title="Close"
-                aria-label="Close help assistant"
+                aria-label="Close assistant"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -339,84 +411,101 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
             </div>
           </div>
 
-          {/* Messages area */}
-          <div className="chat-messages" role="log" aria-live="polite">
-            {messages.length === 0 && !isLoading ? (
-              /* Suggested questions */
-              <div className="chat-suggestions">
-                <div className="chat-suggestions-icon" aria-hidden="true">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" />
-                  </svg>
-                </div>
-                <p className="chat-suggestions-label">How can I help you?</p>
-                <div className="chat-suggestions-list">
-                  {SUGGESTED_QUESTIONS.map((q) => (
-                    <button
-                      key={q}
-                      className="chat-suggestion-chip"
-                      onClick={() => sendMessage(q)}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-                {pageName && (
-                  <p className="chat-context-hint">
-                    Context: <span>{pageName}</span>
-                  </p>
-                )}
-              </div>
-            ) : (
-              <>
-                {messages.map((msg) => (
-                  <MessageBubble key={msg.id} msg={msg} onCopy={handleCopy} />
-                ))}
-                {isLoading && <TypingIndicator />}
-              </>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Copied toast */}
-          {copied && (
-            <div className="chat-toast" role="status">
-              Copied!
-            </div>
+          {/* ── MODE SELECT VIEW ── */}
+          {view === 'mode-select' && (
+            <ModeSelector
+              onSelectChat={() => setView('chatbot')}
+              onSelectWorkbot={() => setView('workbot')}
+            />
           )}
 
-          {/* Input area */}
-          <form className="chat-input-area" onSubmit={handleSubmit}>
-            <div className="chat-input-wrapper">
-              <textarea
-                ref={inputRef}
-                className="chat-input"
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask a question about the app…"
-                rows={1}
-                maxLength={MAX_CHARS}
-                aria-label="Type your question"
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                className="chat-send-btn"
-                disabled={!input.trim() || isLoading}
-                aria-label="Send message"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              </button>
-            </div>
-            {input.length > MAX_CHARS * 0.9 && (
-              <span className="chat-char-count">
-                {input.length}/{MAX_CHARS}
-              </span>
-            )}
-          </form>
+          {/* ── CHATBOT VIEW ── */}
+          {view === 'chatbot' && (
+            <>
+              {/* Messages area */}
+              <div className="chat-messages" role="log" aria-live="polite">
+                {messages.length === 0 && !isLoading ? (
+                  <div className="chat-suggestions">
+                    <div className="chat-suggestions-icon" aria-hidden="true">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" />
+                      </svg>
+                    </div>
+                    <p className="chat-suggestions-label">How can I help you?</p>
+                    <div className="chat-suggestions-list">
+                      {SUGGESTED_QUESTIONS.map((q) => (
+                        <button
+                          key={q}
+                          className="chat-suggestion-chip"
+                          onClick={() => sendMessage(q)}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                    {pageName && (
+                      <p className="chat-context-hint">
+                        Context: <span>{pageName}</span>
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {messages.map((msg) => (
+                      <MessageBubble key={msg.id} msg={msg} onCopy={handleCopy} />
+                    ))}
+                    {isLoading && <TypingIndicator />}
+                  </>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Copied toast */}
+              {copied && (
+                <div className="chat-toast" role="status">
+                  Copied!
+                </div>
+              )}
+
+              {/* Input area with voice */}
+              <form className="chat-input-area" onSubmit={handleSubmit}>
+                <div className="chat-input-wrapper">
+                  <textarea
+                    ref={inputRef}
+                    className="chat-input"
+                    value={input}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask a question about the app…"
+                    rows={1}
+                    maxLength={MAX_CHARS}
+                    aria-label="Type your question"
+                    disabled={isLoading}
+                  />
+                  <VoiceInput
+                    onTranscript={handleVoiceTranscript}
+                    disabled={isLoading}
+                    className="chat-voice-btn"
+                  />
+                  <button
+                    type="submit"
+                    className="chat-send-btn"
+                    disabled={!input.trim() || isLoading}
+                    aria-label="Send message"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                  </button>
+                </div>
+                {input.length > MAX_CHARS * 0.9 && (
+                  <span className="chat-char-count">
+                    {input.length}/{MAX_CHARS}
+                  </span>
+                )}
+              </form>
+            </>
+          )}
         </div>
       )}
     </>

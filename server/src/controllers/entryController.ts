@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import Entry from '../models/Entry.js';
 import User from '../models/User.js';
 import { AuthRequest } from '../types/index.js';
@@ -7,10 +8,41 @@ import {
   getMonthRange,
   getTodayString,
   getFutureDateString,
+  toISTDateString,
 } from '../utils/date.js';
+import { sanitizeText } from '../utils/sanitize.js';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Maximum number of target dates in copy/bulk operations. */
+const MAX_DATES = 366;
+/** Maximum source range span in days for copy-range. */
+const MAX_RANGE_DAYS = 90;
+
+/**
+ * Build a Mongo update operator from validated entry fields.
+ * Moves empty/null startTime and note into $unset so the DB fields are removed.
+ */
+const buildUpdateOp = (
+  updateData: Record<string, unknown>,
+  startTime: string | null | undefined,
+  note: string | null | undefined,
+): Record<string, unknown> => {
+  const unsetFields: Record<string, 1> = {};
+  if (startTime === '' || startTime === null) {
+    unsetFields.startTime = 1;
+    unsetFields.endTime = 1;
+    delete updateData.startTime;
+    delete updateData.endTime;
+  }
+  if (note === '' || note === null) {
+    unsetFields.note = 1;
+    delete updateData.note;
+  }
+  const op: Record<string, unknown> = { $set: updateData };
+  if (Object.keys(unsetFields).length) op.$unset = unsetFields;
+  return op;
+};
 
 /** Validate and sanitise the optional time window. Returns error message or null. */
 const validateTimeWindow = (
@@ -26,10 +58,6 @@ const validateTimeWindow = (
   if (endTime! <= startTime!) return 'endTime must be after startTime';
   return null;
 };
-
-/** Strip HTML / script tags for basic XSS prevention. */
-const sanitizeText = (text: string): string =>
-  text.replace(/<[^>]*>/g, '').trim();
 
 /**
  * Set or update a day's status (office or leave), with optional time window & note.
@@ -94,13 +122,7 @@ export const upsertEntry = async (
       endTime: endTime || undefined,
     };
 
-    // If times are explicitly cleared (sent as empty string / null), unset them
-    const unsetFields: Record<string, 1> = {};
-    if (startTime === '' || startTime === null) { unsetFields.startTime = 1; unsetFields.endTime = 1; delete updateData.startTime; delete updateData.endTime; }
-    if (note === '' || note === null) { unsetFields.note = 1; delete updateData.note; }
-
-    const updateOp: Record<string, unknown> = { $set: updateData };
-    if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+    const updateOp = buildUpdateOp(updateData, startTime, note);
 
     const entry = await Entry.findOneAndUpdate(
       { userId, date },
@@ -114,7 +136,8 @@ export const upsertEntry = async (
       res.status(409).json({ success: false, message: 'Duplicate entry' });
       return;
     }
-    res.status(400).json({ success: false, message: error.message });
+    console.error('upsertEntry error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update entry' });
   }
 };
 
@@ -159,6 +182,10 @@ export const adminUpsertEntry = async (
     }
 
     // Verify target user exists
+    if (!mongoose.isValidObjectId(userId)) {
+      res.status(400).json({ success: false, message: 'Invalid user ID' });
+      return;
+    }
     const targetUser = await User.findById(userId);
     if (!targetUser) {
       res.status(404).json({ success: false, message: 'User not found' });
@@ -174,12 +201,7 @@ export const adminUpsertEntry = async (
       endTime: endTime || undefined,
     };
 
-    const unsetFields: Record<string, 1> = {};
-    if (startTime === '' || startTime === null) { unsetFields.startTime = 1; unsetFields.endTime = 1; delete updateData.startTime; delete updateData.endTime; }
-    if (note === '' || note === null) { unsetFields.note = 1; delete updateData.note; }
-
-    const updateOp: Record<string, unknown> = { $set: updateData };
-    if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+    const updateOp = buildUpdateOp(updateData, startTime, note);
 
     const entry = await Entry.findOneAndUpdate(
       { userId, date },
@@ -189,7 +211,8 @@ export const adminUpsertEntry = async (
 
     res.json({ success: true, data: entry });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('adminUpsertEntry error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update entry' });
   }
 };
 
@@ -221,7 +244,8 @@ export const deleteEntry = async (
       message: entry ? 'Entry removed (status reverted to WFH)' : 'No entry found',
     });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('deleteEntry error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete entry' });
   }
 };
 
@@ -243,7 +267,8 @@ export const adminDeleteEntry = async (
       message: entry ? 'Entry removed (status reverted to WFH)' : 'No entry found',
     });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('adminDeleteEntry error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete entry' });
   }
 };
 
@@ -269,6 +294,14 @@ export const getMyEntries = async (
       return;
     }
 
+    if (!DATE_RE.test(startDate) || !DATE_RE.test(endDate)) {
+      res.status(400).json({
+        success: false,
+        message: 'startDate and endDate must be in YYYY-MM-DD format',
+      });
+      return;
+    }
+
     const entries = await Entry.find({
       userId: req.user!._id,
       date: { $gte: startDate, $lte: endDate },
@@ -276,7 +309,8 @@ export const getMyEntries = async (
 
     res.json({ success: true, data: entries });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('getMyEntries error:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve entries' });
   }
 };
 
@@ -346,7 +380,8 @@ export const getTeamEntries = async (
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('getTeamEntries error:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve team entries' });
   }
 };
 
@@ -377,6 +412,10 @@ export const bulkSetEntries = async (
       res.status(400).json({ success: false, message: 'dates array is required' });
       return;
     }
+    if (dates.length > MAX_DATES) {
+      res.status(400).json({ success: false, message: `dates array length must be <= ${MAX_DATES}` });
+      return;
+    }
 
     if (!['office', 'leave', 'clear'].includes(status)) {
       res.status(400).json({ success: false, message: 'Status must be "office", "leave", or "clear"' });
@@ -393,36 +432,62 @@ export const bulkSetEntries = async (
     const allowedDates = filterAllowedDates(dates, isAdmin);
     const results: { date: string; success: boolean; message?: string }[] = [];
 
-    for (const date of allowedDates) {
-      try {
+    if (allowedDates.length > 0) {
+      const ops = allowedDates.map((date) => {
         if (status === 'clear') {
-          await Entry.findOneAndDelete({ userId, date });
-          results.push({ date, success: true, message: 'cleared' });
-        } else {
-          const updateData: Record<string, unknown> = {
-            userId,
-            date,
-            status,
-            note: note ? sanitizeText(note) : undefined,
-            startTime: startTime || undefined,
-            endTime: endTime || undefined,
-          };
-          const unsetFields: Record<string, 1> = {};
-          if (!startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
-          if (!note) { unsetFields.note = 1; }
-
-          const updateOp: Record<string, unknown> = { $set: updateData };
-          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
-
-          await Entry.findOneAndUpdate(
-            { userId, date },
-            updateOp,
-            { upsert: true, new: true, runValidators: true }
-          );
-          results.push({ date, success: true });
+          return { deleteOne: { filter: { userId, date } } };
         }
+        const updateData: Record<string, unknown> = {
+          userId,
+          date,
+          status,
+          note: note ? sanitizeText(note) : undefined,
+          startTime: startTime || undefined,
+          endTime: endTime || undefined,
+        };
+        const unsetFields: Record<string, 1> = {};
+        if (!startTime) {
+          unsetFields.startTime = 1;
+          unsetFields.endTime = 1;
+          delete updateData.startTime;
+          delete updateData.endTime;
+        }
+        if (!note) {
+          unsetFields.note = 1;
+          delete updateData.note;
+        }
+
+        const update: Record<string, unknown> = { $set: updateData };
+        if (Object.keys(unsetFields).length) update.$unset = unsetFields;
+
+        return {
+          updateOne: {
+            filter: { userId, date },
+            update,
+            upsert: true,
+          },
+        };
+      });
+
+      try {
+        await Entry.bulkWrite(ops, { ordered: false });
+        // All ops succeeded
+        allowedDates.forEach((date) => {
+          results.push({ date, success: true, message: status === 'clear' ? 'cleared' : undefined });
+        });
       } catch (err: any) {
-        results.push({ date, success: false, message: err.message });
+        // With ordered: false, successful ops still execute; map failures by index
+        const writeErrors: { index: number }[] = err.writeErrors ?? [];
+        const failedIndices = new Set(writeErrors.map((e: { index: number }) => e.index));
+
+        allowedDates.forEach((date, i) => {
+          if (failedIndices.has(i)) {
+            console.error(`bulkSetEntries: failed for date ${date}:`, writeErrors.find((e: { index: number }) => e.index === i));
+            results.push({ date, success: false, message: 'Failed to process entry' });
+          } else {
+            results.push({ date, success: true, message: status === 'clear' ? 'cleared' : undefined });
+          }
+        });
       }
     }
 
@@ -439,7 +504,8 @@ export const bulkSetEntries = async (
       },
     });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('bulkSetEntries error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process bulk entries' });
   }
 };
 
@@ -463,6 +529,10 @@ export const copyFromDate = async (
     }
     if (!Array.isArray(targetDates) || targetDates.length === 0) {
       res.status(400).json({ success: false, message: 'targetDates array is required' });
+      return;
+    }
+    if (targetDates.length > MAX_DATES) {
+      res.status(400).json({ success: false, message: `targetDates array length must be <= ${MAX_DATES}` });
       return;
     }
 
@@ -502,7 +572,8 @@ export const copyFromDate = async (
           results.push({ date, success: true });
         }
       } catch (err: any) {
-        results.push({ date, success: false, message: err.message });
+        console.error(`copyFromDate: failed for date ${date}:`, err);
+        results.push({ date, success: false, message: 'Failed to copy entry' });
       }
     }
 
@@ -520,7 +591,8 @@ export const copyFromDate = async (
       },
     });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('copyFromDate error:', error);
+    res.status(500).json({ success: false, message: 'Failed to copy entries' });
   }
 };
 
@@ -574,8 +646,12 @@ export const repeatPattern = async (
     while (current <= end) {
       const dayOfWeek = current.getDay();
       if (daysOfWeek.includes(dayOfWeek)) {
-        const dateStr = current.toISOString().split('T')[0];
+        const dateStr = toISTDateString(current);
         dates.push(dateStr);
+        if (dates.length > MAX_DATES) {
+          res.status(400).json({ success: false, message: `Generated dates exceed the maximum of ${MAX_DATES}` });
+          return;
+        }
       }
       current.setDate(current.getDate() + 1);
     }
@@ -612,7 +688,8 @@ export const repeatPattern = async (
           results.push({ date, success: true });
         }
       } catch (err: any) {
-        results.push({ date, success: false, message: err.message });
+        console.error(`repeatPattern: failed for date ${date}:`, err);
+        results.push({ date, success: false, message: 'Failed to process entry' });
       }
     }
 
@@ -625,7 +702,8 @@ export const repeatPattern = async (
       },
     });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('repeatPattern error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process repeat pattern' });
   }
 };
 
@@ -652,6 +730,20 @@ export const copyRange = async (
       return;
     }
 
+    // Validate sourceEnd >= sourceStart
+    if (sourceEnd < sourceStart) {
+      res.status(400).json({ success: false, message: 'sourceEnd must be the same or after sourceStart' });
+      return;
+    }
+
+    // Enforce maximum range span (UTC arithmetic avoids DST issues)
+    const toUTC = (d: string) => { const [y, m, day] = d.split('-').map(Number); return Date.UTC(y, m - 1, day); };
+    const rangeDays = (toUTC(sourceEnd) - toUTC(sourceStart)) / 86_400_000 + 1;
+    if (rangeDays > MAX_RANGE_DAYS) {
+      res.status(400).json({ success: false, message: `Source range of ${rangeDays} days exceeds the maximum of ${MAX_RANGE_DAYS} days` });
+      return;
+    }
+
     // Fetch source entries
     const sourceEntries = await Entry.find({
       userId,
@@ -661,20 +753,20 @@ export const copyRange = async (
     const sourceMap: Record<string, typeof sourceEntries[0]> = {};
     sourceEntries.forEach((e: any) => { sourceMap[e.date] = e; });
 
-    // Calculate offset in days
-    const srcStartDate = new Date(sourceStart + 'T00:00:00');
-    const tgtStartDate = new Date(targetStart + 'T00:00:00');
+    // Calculate offset in days (UTC)
+    const srcStartDate = new Date(sourceStart + 'T00:00:00Z');
+    const tgtStartDate = new Date(targetStart + 'T00:00:00Z');
     const offsetMs = tgtStartDate.getTime() - srcStartDate.getTime();
 
-    // Generate source date range
-    const current = new Date(sourceStart + 'T00:00:00');
-    const end = new Date(sourceEnd + 'T00:00:00');
+    // Generate source date range (UTC)
+    const current = new Date(sourceStart + 'T00:00:00Z');
+    const end = new Date(sourceEnd + 'T00:00:00Z');
     const results: { date: string; success: boolean; message?: string }[] = [];
 
     while (current <= end) {
-      const srcDateStr = current.toISOString().split('T')[0];
+      const srcDateStr = toISTDateString(current);
       const targetDate = new Date(current.getTime() + offsetMs);
-      const tgtDateStr = targetDate.toISOString().split('T')[0];
+      const tgtDateStr = toISTDateString(targetDate);
 
       // Check allowed
       if (!isAdmin && !isMemberAllowedDate(tgtDateStr)) {
@@ -712,7 +804,8 @@ export const copyRange = async (
           results.push({ date: tgtDateStr, success: true });
         }
       } catch (err: any) {
-        results.push({ date: tgtDateStr, success: false, message: err.message });
+        console.error(`copyRange: failed for date ${tgtDateStr}:`, err);
+        results.push({ date: tgtDateStr, success: false, message: 'Failed to copy entry' });
       }
 
       current.setDate(current.getDate() + 1);
@@ -727,7 +820,8 @@ export const copyRange = async (
       },
     });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('copyRange error:', error);
+    res.status(500).json({ success: false, message: 'Failed to copy range' });
   }
 };
 
@@ -782,6 +876,7 @@ export const getTeamSummary = async (
 
     res.json({ success: true, data: summary });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('getTeamSummary error:', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve team summary' });
   }
 };

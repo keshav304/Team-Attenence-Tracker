@@ -1,11 +1,11 @@
 import { Response } from 'express';
 import Template from '../models/Template.js';
 import { AuthRequest } from '../types/index.js';
+import { sanitizeText } from '../utils/sanitize.js';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-const sanitizeText = (text: string): string =>
-  text.replace(/<[^>]*>/g, '').trim();
+/* sanitizeText is now imported from ../utils/sanitize.js */
 
 /**
  * Get all templates for the logged-in user.
@@ -19,7 +19,8 @@ export const getTemplates = async (
     const templates = await Template.find({ userId: req.user!._id }).sort({ name: 1 });
     res.json({ success: true, data: templates });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('getTemplates error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
 
@@ -76,7 +77,8 @@ export const createTemplate = async (
       res.status(409).json({ success: false, message: 'A template with that name already exists' });
       return;
     }
-    res.status(400).json({ success: false, message: error.message });
+    console.error('createTemplate error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
 
@@ -101,6 +103,7 @@ export const deleteTemplate = async (
 
     res.json({ success: true, message: 'Template deleted' });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('deleteTemplate error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

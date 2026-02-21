@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { entryApi, templateApi } from '../api';
 import type { Template, StatusType } from '../types';
 import {
@@ -6,6 +6,7 @@ import {
   getMaxPlanDate,
   getDayOfWeek,
   isWeekend,
+  toISTDateString,
 } from '../utils/date';
 import toast from 'react-hot-toast';
 
@@ -67,8 +68,12 @@ export const BulkActionToolbar: React.FC<
         status,
         status !== 'clear' ? { note: note || undefined, startTime: startTime || undefined, endTime: endTime || undefined } : undefined,
       );
-      const data = res.data.data!;
-      toast.success(`${data.processed} dates updated, ${data.skipped} skipped`);
+      const data = res.data.data;
+      if (data) {
+        toast.success(`${data.processed} dates updated, ${data.skipped} skipped`);
+      } else {
+        toast.success('Bulk operation completed');
+      }
       onDone();
       onClearSelection();
     } catch (err: any) {
@@ -198,9 +203,8 @@ export const CopyFromDateModal: React.FC<{
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Dates</label>
           <div className="text-xs text-gray-500 dark:text-gray-400 max-h-20 overflow-y-auto">
-            {selectedDates.sort().join(', ')}
-          </div>
-        </div>
+            {[...selectedDates].sort().join(', ')}
+          </div>        </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300">Cancel</button>
           <button onClick={handleCopy} disabled={loading || !sourceDate}
@@ -368,7 +372,13 @@ export const TemplatesPanel: React.FC<{
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    templateApi.getTemplates().then((res) => setTemplates(res.data.data || [])).catch(() => {});
+    templateApi.getTemplates()
+      .then((res) => setTemplates(res.data.data || []))
+      .catch((err) => {
+        console.error('Failed to load templates:', err);
+        toast.error('Failed to load templates');
+        setTemplates([]);
+      });
   }, []);
 
   const handleCreate = async () => {
@@ -513,11 +523,11 @@ export const CopyRangeModal: React.FC<{
   const [customTargetStart, setCustomTargetStart] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const today = new Date();
   const todayStr = getTodayString();
 
-  const getLastWeekRange = () => {
-    const d = new Date(today);
+  const lastWeekRange = useMemo(() => {
+    const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const d = new Date(nowIST);
     const dayOfWeek = d.getDay();
     // last Monday
     const lastMonday = new Date(d);
@@ -527,33 +537,32 @@ export const CopyRangeModal: React.FC<{
     const thisMonday = new Date(d);
     thisMonday.setDate(d.getDate() - dayOfWeek + 1);
     return {
-      sourceStart: lastMonday.toISOString().split('T')[0],
-      sourceEnd: lastFriday.toISOString().split('T')[0],
-      targetStart: thisMonday.toISOString().split('T')[0],
+      sourceStart: toISTDateString(lastMonday),
+      sourceEnd: toISTDateString(lastFriday),
+      targetStart: toISTDateString(thisMonday),
     };
-  };
+  }, []);
 
-  const getLastMonthRange = () => {
-    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastMonthRange = useMemo(() => {
+    const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const lastMonth = new Date(nowIST.getFullYear(), nowIST.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(nowIST.getFullYear(), nowIST.getMonth(), 0);
+    const thisMonthStart = new Date(nowIST.getFullYear(), nowIST.getMonth(), 1);
     return {
-      sourceStart: lastMonth.toISOString().split('T')[0],
-      sourceEnd: lastMonthEnd.toISOString().split('T')[0],
-      targetStart: thisMonthStart.toISOString().split('T')[0],
+      sourceStart: toISTDateString(lastMonth),
+      sourceEnd: toISTDateString(lastMonthEnd),
+      targetStart: toISTDateString(thisMonthStart),
     };
-  };
+  }, []);
 
   const handleCopy = async () => {
     setLoading(true);
     try {
       let sourceStart: string, sourceEnd: string, targetStart: string;
       if (mode === 'last-week') {
-        const r = getLastWeekRange();
-        sourceStart = r.sourceStart; sourceEnd = r.sourceEnd; targetStart = r.targetStart;
+        sourceStart = lastWeekRange.sourceStart; sourceEnd = lastWeekRange.sourceEnd; targetStart = lastWeekRange.targetStart;
       } else if (mode === 'last-month') {
-        const r = getLastMonthRange();
-        sourceStart = r.sourceStart; sourceEnd = r.sourceEnd; targetStart = r.targetStart;
+        sourceStart = lastMonthRange.sourceStart; sourceEnd = lastMonthRange.sourceEnd; targetStart = lastMonthRange.targetStart;
       } else {
         sourceStart = customSourceStart; sourceEnd = customSourceEnd; targetStart = customTargetStart;
       }
@@ -595,12 +604,12 @@ export const CopyRangeModal: React.FC<{
         {/* Preview for preset modes */}
         {mode === 'last-week' && (
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-            {(() => { const r = getLastWeekRange(); return `${r.sourceStart} → ${r.sourceEnd} copied to start at ${r.targetStart}`; })()}
+            {`${lastWeekRange.sourceStart} → ${lastWeekRange.sourceEnd} copied to start at ${lastWeekRange.targetStart}`}
           </div>
         )}
         {mode === 'last-month' && (
           <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-            {(() => { const r = getLastMonthRange(); return `${r.sourceStart} → ${r.sourceEnd} copied to start at ${r.targetStart}`; })()}
+            {`${lastMonthRange.sourceStart} → ${lastMonthRange.sourceEnd} copied to start at ${lastMonthRange.targetStart}`}
           </div>
         )}
 

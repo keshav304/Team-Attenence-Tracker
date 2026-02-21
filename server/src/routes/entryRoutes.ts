@@ -13,6 +13,18 @@ import {
   getTeamSummary,
 } from '../controllers/entryController.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import {
+  validateUpsertEntry,
+  validateAdminUpsertEntry,
+  validateDeleteEntry,
+  validateAdminDeleteEntry,
+  validateBulkSet,
+  validateCopyFromDate,
+  validateRepeatPattern,
+  validateCopyRange,
+  validateGetMyEntries,
+  validateTeamQuery,
+} from '../middleware/entryValidation.js';
 
 const router = Router();
 
@@ -20,30 +32,30 @@ const router = Router();
 router.use(authenticate);
 
 // Team view
-router.get('/team', getTeamEntries);
+router.get('/team', validateTeamQuery, getTeamEntries);
 
 // Team availability summary
-router.get('/team-summary', getTeamSummary);
+router.get('/team-summary', validateTeamQuery, getTeamSummary);
 
 // Current user's entries
-router.get('/', getMyEntries);
+router.get('/', validateGetMyEntries, getMyEntries);
 
 // Set/update own entry
-router.put('/', upsertEntry);
+router.put('/', validateUpsertEntry, upsertEntry);
 
 // Bulk operations
-router.post('/bulk', bulkSetEntries);
-router.post('/copy', copyFromDate);
-router.post('/repeat', repeatPattern);
-router.post('/copy-range', copyRange);
+router.post('/bulk', validateBulkSet, bulkSetEntries);
+router.post('/copy', validateCopyFromDate, copyFromDate);
+router.post('/repeat', validateRepeatPattern, repeatPattern);
+router.post('/copy-range', validateCopyRange, copyRange);
 
 // Delete own entry (revert to WFH)
-router.delete('/:date', deleteEntry);
+router.delete('/:date', validateDeleteEntry, deleteEntry);
 
 // Admin: set/update entry for any user
-router.put('/admin', requireAdmin, adminUpsertEntry);
+router.put('/admin', requireAdmin, validateAdminUpsertEntry, adminUpsertEntry);
 
 // Admin: delete entry for any user
-router.delete('/admin/:userId/:date', requireAdmin, adminDeleteEntry);
+router.delete('/admin/:userId/:date', requireAdmin, validateAdminDeleteEntry, adminDeleteEntry);
 
 export default router;

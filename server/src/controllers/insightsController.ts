@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Entry from '../models/Entry.js';
 import Holiday from '../models/Holiday.js';
 import { AuthRequest } from '../types/index.js';
+import { toISTDateString } from '../utils/date.js';
 
 /**
  * Get insights / analytics for a given month.
@@ -14,21 +15,7 @@ export const getInsights = async (
   res: Response
 ): Promise<void> => {
   try {
-    const monthStr = req.query.month as string;
-    const yearStr = req.query.year as string;
-
-    if (!monthStr || !yearStr) {
-      res.status(400).json({ success: false, message: 'month and year query params are required' });
-      return;
-    }
-
-    const month = parseInt(monthStr, 10);
-    const year = parseInt(yearStr, 10);
-
-    if (isNaN(month) || month < 1 || month > 12 || isNaN(year) || year < 2000) {
-      res.status(400).json({ success: false, message: 'Invalid month or year' });
-      return;
-    }
+    const { month, year } = res.locals.validatedQuery as { month: number; year: number };
 
     const mm = String(month).padStart(2, '0');
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -60,7 +47,7 @@ export const getInsights = async (
 
     // ─── Build entry lookup: userId → date → entry ─
     const entryMap: Record<string, Record<string, { status: string; startTime?: string; endTime?: string; note?: string }>> = {};
-    entries.forEach((e: any) => {
+    entries.forEach((e) => {
       const uid = e.userId.toString();
       if (!entryMap[uid]) entryMap[uid] = {};
       entryMap[uid][e.date] = {
@@ -103,7 +90,7 @@ export const getInsights = async (
       const userEntries = entryMap[uid] || {};
 
       // Determine if user joined mid-month
-      const userCreated = user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : '2000-01-01';
+      const userCreated = user.createdAt ? toISTDateString(new Date(user.createdAt)) : '2000-01-01';
       const effectiveWorkingDays = workingDays.filter((d) => d >= userCreated);
       const effectiveTotal = effectiveWorkingDays.length;
 
@@ -205,7 +192,8 @@ export const getInsights = async (
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('getInsights error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
 
@@ -220,21 +208,7 @@ export const getUserInsights = async (
 ): Promise<void> => {
   try {
     const { userId } = req.params;
-    const monthStr = req.query.month as string;
-    const yearStr = req.query.year as string;
-
-    if (!monthStr || !yearStr) {
-      res.status(400).json({ success: false, message: 'month and year query params are required' });
-      return;
-    }
-
-    const month = parseInt(monthStr, 10);
-    const year = parseInt(yearStr, 10);
-
-    if (isNaN(month) || month < 1 || month > 12 || isNaN(year) || year < 2000) {
-      res.status(400).json({ success: false, message: 'Invalid month or year' });
-      return;
-    }
+    const { month, year } = res.locals.validatedQuery as { month: number; year: number };
 
     // Validate user exists
     const user = await User.findById(userId).select('name email role isActive createdAt');
@@ -255,12 +229,12 @@ export const getUserInsights = async (
     ]);
 
     // Build holiday set
-    const holidaySet = new Set(holidays.map((h: any) => h.date));
-    const holidayList = holidays.map((h: any) => ({ date: h.date, name: h.name }));
+    const holidaySet = new Set(holidays.map((h) => h.date));
+    const holidayList = holidays.map((h) => ({ date: h.date, name: h.name }));
 
     // Build entry lookup: date → entry
     const entryMap: Record<string, { status: string; startTime?: string; endTime?: string; note?: string }> = {};
-    entries.forEach((e: any) => {
+    entries.forEach((e) => {
       entryMap[e.date] = {
         status: e.status,
         startTime: e.startTime,
@@ -271,7 +245,7 @@ export const getUserInsights = async (
 
     // Determine user's effective start (in case they joined mid-month)
     const userCreated = user.createdAt
-      ? new Date(user.createdAt).toISOString().split('T')[0]
+      ? toISTDateString(new Date(user.createdAt))
       : '2000-01-01';
 
     // Compute working days and daily breakdown
@@ -302,7 +276,7 @@ export const getUserInsights = async (
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       const isHoliday = holidaySet.has(dateStr);
       const isBeforeJoin = dateStr < userCreated;
-      const holiday = isHoliday ? holidays.find((h: any) => h.date === dateStr) : undefined;
+      const holiday = isHoliday ? holidays.find((h) => h.date === dateStr) : undefined;
 
       const entry = entryMap[dateStr];
 
@@ -378,7 +352,8 @@ export const getUserInsights = async (
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('getUserInsights error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };
 
@@ -392,21 +367,7 @@ export const exportInsightsCsv = async (
   res: Response
 ): Promise<void> => {
   try {
-    const monthStr = req.query.month as string;
-    const yearStr = req.query.year as string;
-
-    if (!monthStr || !yearStr) {
-      res.status(400).json({ success: false, message: 'month and year query params are required' });
-      return;
-    }
-
-    const month = parseInt(monthStr, 10);
-    const year = parseInt(yearStr, 10);
-
-    if (isNaN(month) || month < 1 || month > 12 || isNaN(year) || year < 2000) {
-      res.status(400).json({ success: false, message: 'Invalid month or year' });
-      return;
-    }
+    const { month, year } = res.locals.validatedQuery as { month: number; year: number };
 
     const mm = String(month).padStart(2, '0');
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -419,7 +380,7 @@ export const exportInsightsCsv = async (
       Entry.find({ date: { $gte: startDate, $lte: endDate } }),
     ]);
 
-    const holidaySet = new Set(holidays.map((h: any) => h.date));
+    const holidaySet = new Set(holidays.map((h) => h.date));
 
     // Compute working days
     const workingDays: string[] = [];
@@ -433,7 +394,7 @@ export const exportInsightsCsv = async (
 
     // Build entry lookup
     const entryMap: Record<string, Record<string, string>> = {};
-    entries.forEach((e: any) => {
+    entries.forEach((e) => {
       const uid = e.userId.toString();
       if (!entryMap[uid]) entryMap[uid] = {};
       entryMap[uid][e.date] = e.status;
@@ -444,11 +405,14 @@ export const exportInsightsCsv = async (
       'Name,Email,Working Days,Office Days,Leave Days,WFH Days,Office %,Leave %,WFH %',
     ];
 
+    // Escape values for CSV per RFC 4180 (quote if they contain commas, quotes, or newlines)
+    const escapeCsv = (val: string) => (/[,"\r\n]/.test(val) ? `"${val.replace(/"/g, '""')}"` : val);
+
     for (const user of users) {
       const uid = user._id.toString();
       const userEntries = entryMap[uid] || {};
       const userCreated = user.createdAt
-        ? new Date(user.createdAt).toISOString().split('T')[0]
+        ? toISTDateString(new Date(user.createdAt))
         : '2000-01-01';
       const effectiveWorkingDays = workingDays.filter((d) => d >= userCreated);
       const effectiveTotal = effectiveWorkingDays.length;
@@ -465,9 +429,6 @@ export const exportInsightsCsv = async (
       const leavePercent = effectiveTotal > 0 ? Math.round((leaveDays / effectiveTotal) * 100) : 0;
       const wfhPercent = effectiveTotal > 0 ? Math.round((wfhDays / effectiveTotal) * 100) : 0;
 
-      // Escape name/email for CSV (wrap in quotes if they contain commas)
-      const escapeCsv = (val: string) => (val.includes(',') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val);
-
       csvRows.push(
         `${escapeCsv(user.name)},${escapeCsv(user.email)},${effectiveTotal},${officeDays},${leaveDays},${wfhDays},${officePercent}%,${leavePercent}%,${wfhPercent}%`
       );
@@ -481,6 +442,7 @@ export const exportInsightsCsv = async (
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csvContent);
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('exportInsightsCsv error:', error);
+    res.status(500).json({ success: false, message: 'Failed to export CSV' });
   }
 };
