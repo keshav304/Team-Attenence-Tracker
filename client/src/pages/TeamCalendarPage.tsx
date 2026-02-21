@@ -221,7 +221,7 @@ const TeamCalendarPage: React.FC = () => {
   useEffect(() => {
     templateApi.getTemplates()
       .then((res) => setTemplates(res.data.data || []))
-      .catch(() => {});
+      .catch((err) => console.warn('[TeamCalendar] Failed to load templates:', err));
   }, []);
 
   useEffect(() => {
@@ -682,22 +682,26 @@ const TeamCalendarPage: React.FC = () => {
                                       onChange={(e) => {
                                         const tpl = templates.find((t) => t._id === e.target.value);
                                         if (tpl) {
-                                          setEditCell({
-                                            ...editCell,
+                                          setEditCell((prev) => prev ? {
+                                            ...prev,
                                             status: tpl.status,
                                             note: tpl.note || '',
                                             startTime: tpl.startTime || '',
                                             endTime: tpl.endTime || '',
-                                          });
+                                          } : prev);
                                         }
                                       }}
                                     >
                                       <option value="">— Select a template —</option>
-                                      {templates.map((t) => (
-                                        <option key={t._id} value={t._id}>
-                                          {t.name} ({t.status === 'office' ? '🏢' : '🌴'} {t.status}{t.startTime ? ` ⏰${t.startTime}–${t.endTime}` : ''})
-                                        </option>
-                                      ))}
+                                      {templates.map((t) => {
+                                        const statusEmoji: Record<string, string> = { office: '🏢', leave: '🌴', wfh: '🏠' };
+                                        const emoji = statusEmoji[t.status] ?? '📋';
+                                        return (
+                                          <option key={t._id} value={t._id}>
+                                            {t.name} ({emoji} {t.status}{t.startTime ? ` ⏰${t.startTime}–${t.endTime}` : ''})
+                                          </option>
+                                        );
+                                      })}
                                     </select>
                                   </div>
                                 )}

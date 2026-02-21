@@ -78,7 +78,13 @@ const updateTemplateSchema = z.object({
   startTime: z.string().regex(TIME_PATTERN, 'Must be HH:mm').optional().nullable(),
   endTime: z.string().regex(TIME_PATTERN, 'Must be HH:mm').optional().nullable(),
   note: z.string().max(500).optional().nullable(),
-});
+}).refine(
+  (d) => !(d.startTime && d.endTime && d.endTime <= d.startTime),
+  { message: 'endTime must be after startTime', path: ['endTime'] }
+);
+// Note: the pairing constraint (both startTime and endTime must be present together)
+// is enforced in the controller after merging with existing template data, since a
+// partial update may only send one of the two fields.
 
 export const validateCreateTemplate = validate(createTemplateSchema);
 export const validateUpdateTemplate = validate(updateTemplateSchema);

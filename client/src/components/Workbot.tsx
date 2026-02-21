@@ -65,7 +65,7 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
   useEffect(() => {
     templateApi.getTemplates()
       .then((res) => setTemplates(res.data.data || []))
-      .catch(() => {});
+      .catch((err) => console.warn('Failed to load templates:', err));
   }, []);
 
   /* ── Apply template to all selected rows ── */
@@ -355,16 +355,24 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
               <div className="workbot-summary-bar" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
                 <span className="workbot-summary-icon" aria-hidden="true">⚡</span>
                 <span style={{ fontSize: '0.8125rem' }}>Apply template to selected rows:</span>
-                {templates.map((tpl) => (
-                  <button
-                    key={tpl._id}
-                    className="workbot-example-chip"
-                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }}
-                    onClick={() => applyTemplateToRows(tpl)}
-                  >
-                    {tpl.status === 'office' ? '🏢' : '🌴'} {tpl.name}
-                  </button>
-                ))}
+                {templates.map((tpl) => {
+                  const statusEmoji: Record<string, string> = {
+                    office: '🏢',
+                    leave: '🌴',
+                    clear: '🧹',
+                  };
+                  const emoji = statusEmoji[tpl.status] ?? '📋';
+                  return (
+                    <button
+                      key={tpl._id}
+                      className="workbot-example-chip"
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }}
+                      onClick={() => applyTemplateToRows(tpl)}
+                    >
+                      {emoji} {tpl.name}
+                    </button>
+                  );
+                })}
               </div>
             )}
 

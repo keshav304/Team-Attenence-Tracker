@@ -369,7 +369,12 @@ export const TemplatesPanel: React.FC<{
   const [newStartTime, setNewStartTime] = useState('');
   const [newEndTime, setNewEndTime] = useState('');
   const [newNote, setNewNote] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+
+  // Delete guard
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
   // Edit state
   const [editId, setEditId] = useState<string | null>(null);
@@ -403,7 +408,7 @@ export const TemplatesPanel: React.FC<{
 
   const handleUpdate = async () => {
     if (!editId || !editName.trim()) { toast.error('Name is required'); return; }
-    setLoading(true);
+    setIsUpdating(true);
     try {
       const res = await templateApi.updateTemplate(editId, {
         name: editName.trim(),
@@ -412,19 +417,24 @@ export const TemplatesPanel: React.FC<{
         endTime: editEndTime || undefined,
         note: editNote || undefined,
       });
-      setTemplates((prev) => prev.map((t) => (t._id === editId ? res.data.data! : t)));
-      setEditId(null);
-      toast.success('Template updated');
+      const updated = res.data?.data;
+      if (updated) {
+        setTemplates((prev) => prev.map((t) => (t._id === editId ? updated : t)));
+        setEditId(null);
+        toast.success('Template updated');
+      } else {
+        toast.error('Unexpected response from server');
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to update template');
     } finally {
-      setLoading(false);
+      setIsUpdating(false);
     }
   };
 
   const handleCreate = async () => {
     if (!newName.trim()) { toast.error('Name is required'); return; }
-    setLoading(true);
+    setIsCreating(true);
     try {
       const res = await templateApi.createTemplate({
         name: newName.trim(),
@@ -433,18 +443,25 @@ export const TemplatesPanel: React.FC<{
         endTime: newEndTime || undefined,
         note: newNote || undefined,
       });
-      setTemplates((prev) => [...prev, res.data.data!]);
-      setShowCreate(false);
+      const created = res.data?.data;
+      if (created) {
+        setTemplates((prev) => [...prev, created]);
+        setShowCreate(false);
+      } else {
+        toast.error('Unexpected response from server');
+      }
       setNewName(''); setNewStartTime(''); setNewEndTime(''); setNewNote('');
       toast.success('Template created');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to create template');
     } finally {
-      setLoading(false);
+      setIsCreating(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (deletingIds.has(id)) return;
+    setDeletingIds((prev) => new Set(prev).add(id));
     try {
       await templateApi.deleteTemplate(id);
       setTemplates((prev) => prev.filter((t) => t._id !== id));
@@ -452,6 +469,8 @@ export const TemplatesPanel: React.FC<{
       toast.success('Template deleted');
     } catch {
       toast.error('Failed to delete template');
+    } finally {
+      setDeletingIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     }
   };
 
@@ -460,7 +479,7 @@ export const TemplatesPanel: React.FC<{
       toast.error('Select dates first to apply template');
       return;
     }
-    setLoading(true);
+    setIsApplying(true);
     try {
       await entryApi.bulkSet(selectedDates, template.status, {
         note: template.note,
@@ -472,7 +491,7 @@ export const TemplatesPanel: React.FC<{
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to apply template');
     } finally {
-      setLoading(false);
+      setIsApplying(false);
     }
   };
 
@@ -523,9 +542,9 @@ export const TemplatesPanel: React.FC<{
                     className="flex-1 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600">
                     Cancel
                   </button>
-                  <button onClick={handleUpdate} disabled={loading || !editName.trim()}
+                  <button onClick={handleUpdate} disabled={isUpdating || !editName.trim()}
                     className="flex-1 py-1.5 bg-primary-600 text-white text-xs rounded hover:bg-primary-700 disabled:opacity-50">
-                    {loading ? 'Saving…' : 'Save'}
+                    {isUpdating ? 'Saving…' : 'Save'}
                   </button>
                 </div>
               </div>
@@ -540,9 +559,9 @@ export const TemplatesPanel: React.FC<{
                     {t.note && ` 📝 ${t.note}`}
                   </span>
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                   <button onClick={() => handleApply(t)}
-                    disabled={selectedDates.length === 0 || loading}
+                    disabled={selectedDates.length === 0 || isApplying}
                     className="text-[10px] px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 disabled:opacity-50"
                     title={selectedDates.length === 0 ? 'Select dates first' : `Apply to ${selectedDates.length} dates`}>
                     Apply
@@ -552,7 +571,8 @@ export const TemplatesPanel: React.FC<{
                     ✏️
                   </button>
                   <button onClick={() => handleDelete(t._id)}
-                    className="text-[10px] px-2 py-0.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/50">
+                    disabled={deletingIds.has(t._id)}
+                    className="text-[10px] px-2 py-0.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed">
                     ×
                   </button>
                 </div>
@@ -586,9 +606,9 @@ export const TemplatesPanel: React.FC<{
           </div>
           <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value.slice(0, 500))}
             placeholder="Default note (optional)" className="w-full px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
-          <button onClick={handleCreate} disabled={loading || !newName.trim()}
+          <button onClick={handleCreate} disabled={isCreating || !newName.trim()}
             className="w-full py-1.5 bg-primary-600 text-white text-xs rounded hover:bg-primary-700 disabled:opacity-50">
-            {loading ? 'Creating…' : 'Create Template'}
+            {isCreating ? 'Creating…' : 'Create Template'}
           </button>
         </div>
       )}

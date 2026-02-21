@@ -106,12 +106,26 @@ export const updateTemplate = async (
     if (endTime !== undefined) update.endTime = endTime || undefined;
     if (note !== undefined) update.note = note ? sanitizeText(note) : undefined;
 
-    // Validate time pair
-    const finalStart = update.startTime !== undefined ? update.startTime : undefined;
-    const finalEnd = update.endTime !== undefined ? update.endTime : undefined;
-    if (finalStart && !TIME_RE.test(finalStart)) { res.status(400).json({ success: false, message: 'startTime must be in HH:mm format' }); return; }
-    if (finalEnd && !TIME_RE.test(finalEnd)) { res.status(400).json({ success: false, message: 'endTime must be in HH:mm format' }); return; }
-    if (finalStart && finalEnd && finalEnd <= finalStart) { res.status(400).json({ success: false, message: 'endTime must be after startTime' }); return; }
+    // Load the existing template so we can merge and validate the effective state
+    const existing = await Template.findOne({ _id: req.params.id, userId: req.user!._id });
+    if (!existing) { res.status(404).json({ success: false, message: 'Template not found' }); return; }
+
+    // If no fields were provided to update, return the existing template as-is
+    if (Object.keys(update).length === 0) {
+      res.json({ success: true, data: existing });
+      return;
+    }
+
+    // Compute the effective times after the update is applied
+    const effectiveStart = update.startTime !== undefined ? update.startTime : existing.startTime;
+    const effectiveEnd = update.endTime !== undefined ? update.endTime : existing.endTime;
+
+    if (effectiveStart && !TIME_RE.test(effectiveStart)) { res.status(400).json({ success: false, message: 'startTime must be in HH:mm format' }); return; }
+    if (effectiveEnd && !TIME_RE.test(effectiveEnd)) { res.status(400).json({ success: false, message: 'endTime must be in HH:mm format' }); return; }
+    if ((effectiveStart && !effectiveEnd) || (!effectiveStart && effectiveEnd)) {
+      res.status(400).json({ success: false, message: 'Both startTime and endTime must be provided together' }); return;
+    }
+    if (effectiveStart && effectiveEnd && effectiveEnd <= effectiveStart) { res.status(400).json({ success: false, message: 'endTime must be after startTime' }); return; }
 
     const template = await Template.findOneAndUpdate(
       { _id: req.params.id, userId: req.user!._id },
