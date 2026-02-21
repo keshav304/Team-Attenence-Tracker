@@ -63,7 +63,19 @@ ${question}`;
 }
 
 /**
+ * Ordered list of free models to try. If the first returns a rate-limit or
+ * empty response, subsequent models are attempted.
+ */
+const LLM_MODELS = [
+  'nvidia/nemotron-nano-9b-v2:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'google/gemma-3-12b-it:free',
+  'deepseek/deepseek-r1-0528:free',
+];
+
+/**
  * Call OpenRouter (free-tier compatible) to generate the answer.
+ * Tries models in order until one succeeds with a non-empty response.
  */
 async function generateAnswer(
   systemPrompt: string
@@ -73,34 +85,75 @@ async function generateAnswer(
     throw new Error('OPENROUTER_API_KEY is not configured');
   }
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': config.clientUrl,
-      'X-Title': 'A-Team-Tracker Assistant',
-    },
-    body: JSON.stringify({
-      model: 'deepseek/deepseek-r1-0528:free',
-      messages: [
-        { role: 'user', content: systemPrompt },
-      ],
-      max_tokens: 2048,
-      temperature: 0.2,
-    }),
-  });
+  let lastError = '';
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`OpenRouter API error (${res.status}): ${body}`);
+  for (const model of LLM_MODELS) {
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'HTTP-Referer': config.clientUrl,
+          'X-Title': 'A-Team-Tracker Assistant',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+          ],
+          max_tokens: 1024,
+          temperature: 0.2,
+        }),
+      });
+
+      if (res.status === 429) {
+        console.warn(`Chat: model ${model} rate-limited, trying next…`);
+        lastError = `Rate limited (${model})`;
+        continue;
+      }
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.warn(`Chat: model ${model} returned ${res.status}: ${body.substring(0, 200)}`);
+        lastError = `${model} error ${res.status}`;
+        continue;
+      }
+
+      const data = (await res.json()) as {
+        choices: {
+          message: {
+            content?: string;
+            reasoning?: string;
+            reasoning_content?: string;
+          };
+        }[];
+      };
+
+      // Some reasoning models (e.g. DeepSeek R1) put the answer in
+      // message.content, but may leave it empty while spending tokens on
+      // the reasoning field.  Fall back to reasoning if content is blank.
+      const msg = data.choices?.[0]?.message;
+      const answer =
+        msg?.content?.trim() ||
+        msg?.reasoning_content?.trim() ||
+        msg?.reasoning?.trim() ||
+        '';
+
+      if (answer) {
+        return answer;
+      }
+
+      console.warn(`Chat: model ${model} returned empty content, trying next…`);
+      lastError = `Empty answer (${model})`;
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`Chat: model ${model} threw: ${errMsg}`);
+      lastError = errMsg;
+    }
   }
 
-  const data = (await res.json()) as {
-    choices: { message: { content: string } }[];
-  };
-
-  return data.choices?.[0]?.message?.content?.trim() ?? '';
+  throw new Error(`All LLM models failed. Last error: ${lastError}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -172,10 +225,30 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     }
 
     /* 2 ── Embed the query ------------------------------------------ */
-    const queryVector = await embedText(question);
+    let queryVector: number[];
+    try {
+      queryVector = await embedText(question);
+    } catch (embErr) {
+      console.error('Chat: embedding failed:', embErr);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to process the question (embedding error).',
+      });
+      return;
+    }
 
     /* 3 ── MongoDB Atlas Vector Search ------------------------------ */
-    const chunks = await searchDocs(queryVector);
+    let chunks: DocChunk[];
+    try {
+      chunks = await searchDocs(queryVector);
+    } catch (searchErr) {
+      console.error('Chat: vector search failed:', searchErr);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to search the documentation.',
+      });
+      return;
+    }
 
     /* 4 ── Handle no results ---------------------------------------- */
     if (!chunks || chunks.length === 0) {
@@ -194,7 +267,21 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
 
     /* 6 ── Generate natural language answer via LLM ----------------- */
     const prompt = buildPrompt(context, question);
-    const answer = await generateAnswer(prompt);
+    let answer: string;
+    try {
+      answer = await generateAnswer(prompt);
+    } catch (llmErr) {
+      console.error('Chat: LLM generation failed:', llmErr);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate an answer. Please try again.',
+      });
+      return;
+    }
+
+    if (!answer) {
+      answer = "I found some relevant documentation but couldn't formulate an answer. Please try rephrasing your question.";
+    }
 
     /* 7 ── Deduplicate sources -------------------------------------- */
     const seenSources = new Set<string>();

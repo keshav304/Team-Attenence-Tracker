@@ -1,6 +1,14 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Corporate proxy environments may use self-signed TLS certificates that block
+// downloads from HuggingFace (embedding model) and other HTTPS services.
+// Allow opting-in via .env rather than hard-coding.
+if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+  // Value already set through .env – nothing additional needed.
+  // Node shows a warning automatically.
+}
+
 interface Config {
   port: number;
   mongodbUri: string;

@@ -17,7 +17,8 @@
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.6.0",
-    "onnxruntime-node": "^1.24.2"
+    "onnxruntime-node": "^1.24.2",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
