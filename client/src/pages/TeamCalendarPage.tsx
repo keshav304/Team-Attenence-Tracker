@@ -791,7 +791,6 @@ const TeamCalendarPage: React.FC = () => {
           </div>
         )}
       </div>
-
       {/* Event Detail Modal */}
       {eventDetailList.length > 0 && (() => {
         const eventDetail = eventDetailList[eventDetailIdx];
