@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { entryApi, holidayApi, statusApi, eventApi } from '../api';
 import { useAuth } from '../context/AuthContext';
 import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent } from '../types';
@@ -73,6 +73,17 @@ const TeamCalendarPage: React.FC = () => {
   const [eventDetailIdx, setEventDetailIdx] = useState(0);
 
   const days = getDaysInMonth(month);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollWeek = (direction: 'left' | 'right') => {
+    if (!scrollRef.current) return;
+    const colWidth = 100; // min-w-[100px] per day column
+    const offset = colWidth * 7; // one week
+    scrollRef.current.scrollBy({
+      left: direction === 'right' ? offset : -offset,
+      behavior: 'smooth',
+    });
+  };
 
   const filteredTeam = useMemo(() => {
     let result = team;
@@ -82,14 +93,25 @@ const TeamCalendarPage: React.FC = () => {
         (m) => m.user.name.toLowerCase().includes(q) || m.user.email.toLowerCase().includes(q)
       );
     }
-    if (statusFilter !== 'all' && filterDate) {
-      result = result.filter((m) => {
-        const effective = getEffectiveStatusForFilter(m.entries, filterDate);
-        return effective === statusFilter;
-      });
+    if (statusFilter !== 'all') {
+      if (filterDate) {
+        // Filter by status on the specific chosen date
+        result = result.filter((m) => {
+          const effective = getEffectiveStatusForFilter(m.entries, filterDate);
+          return effective === statusFilter;
+        });
+      } else {
+        // No date chosen — show members who have this status on ANY weekday in the month
+        result = result.filter((m) =>
+          days.some((d) => {
+            if (isWeekend(d) || holidays[d]) return false;
+            return getEffectiveStatusForFilter(m.entries, d) === statusFilter;
+          })
+        );
+      }
     }
     return result;
-  }, [team, searchQuery, statusFilter, filterDate, holidays]);
+  }, [team, searchQuery, statusFilter, filterDate, holidays, days]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -414,7 +436,18 @@ const TeamCalendarPage: React.FC = () => {
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative flex items-stretch">
+            {/* Left scroll arrow */}
+            <button
+              type="button"
+              onClick={() => scrollWeek('left')}
+              className="sticky left-0 z-20 flex items-center justify-center px-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-r border-gray-200 dark:border-gray-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Scroll left one week"
+            >
+              <ChevronLeft size={20} />
+            </button>
+
+            <div className="overflow-x-auto flex-1" ref={scrollRef}>
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-800">
@@ -672,6 +705,17 @@ const TeamCalendarPage: React.FC = () => {
                 })}
               </tbody>
             </table>
+          </div>
+
+            {/* Right scroll arrow */}
+            <button
+              type="button"
+              onClick={() => scrollWeek('right')}
+              className="sticky right-0 z-20 flex items-center justify-center px-1 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-l border-gray-200 dark:border-gray-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Scroll right one week"
+            >
+              <ChevronRight size={20} />
+            </button>
           </div>
         )}
 
