@@ -8,12 +8,13 @@ import React, {
 } from 'react';
 import VoiceInput from './VoiceInput';
 import axios from 'axios';
-import { workbotApi } from '../api';
+import { workbotApi, templateApi } from '../api';
 import type {
   WorkbotAction,
   WorkbotResolvedChange,
   WorkbotApplyItem,
   WorkbotApplyResult,
+  Template,
 } from '../types';
 
 /* ------------------------------------------------------------------ */
@@ -57,7 +58,23 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
   const [changes, setChanges] = useState<WorkbotResolvedChange[]>([]);
   const [applyResult, setApplyResult] = useState<WorkbotApplyResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [templates, setTemplates] = useState<Template[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  /* ── Fetch templates ── */
+  useEffect(() => {
+    templateApi.getTemplates()
+      .then((res) => setTemplates(res.data.data || []))
+      .catch(() => {});
+  }, []);
+
+  /* ── Apply template to all selected rows ── */
+  const applyTemplateToRows = useCallback((tpl: Template) => {
+    const statusVal = tpl.status as 'office' | 'leave';
+    setChanges((prev) =>
+      prev.map((c) => (c.valid && c.selected ? { ...c, status: statusVal, note: tpl.note || c.note } : c))
+    );
+  }, []);
 
   /* ── Submit command ── */
   const handleSubmit = useCallback(
@@ -330,6 +347,24 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
               <div className="workbot-summary-bar">
                 <span className="workbot-summary-icon" aria-hidden="true">💡</span>
                 <span>{parseSummary}</span>
+              </div>
+            )}
+
+            {/* Template picker for the preview table */}
+            {templates.length > 0 && (
+              <div className="workbot-summary-bar" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span className="workbot-summary-icon" aria-hidden="true">⚡</span>
+                <span style={{ fontSize: '0.8125rem' }}>Apply template to selected rows:</span>
+                {templates.map((tpl) => (
+                  <button
+                    key={tpl._id}
+                    className="workbot-example-chip"
+                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }}
+                    onClick={() => applyTemplateToRows(tpl)}
+                  >
+                    {tpl.status === 'office' ? '🏢' : '🌴'} {tpl.name}
+                  </button>
+                ))}
               </div>
             )}
 

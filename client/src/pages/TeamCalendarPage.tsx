@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef, Component, type ErrorInfo, type ReactNode } from 'react';
-import { entryApi, holidayApi, statusApi, eventApi } from '../api';
+import { entryApi, holidayApi, statusApi, eventApi, templateApi } from '../api';
 import { useAuth } from '../context/AuthContext';
-import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent } from '../types';
+import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent, Template } from '../types';
 import {
   getCurrentMonth,
   offsetMonth,
@@ -122,6 +122,8 @@ const TeamCalendarPage: React.FC = () => {
   const [eventDetailList, setEventDetailList] = useState<CalendarEvent[]>([]);
   const [eventDetailIdx, setEventDetailIdx] = useState(0);
 
+  const [templates, setTemplates] = useState<Template[]>([]);
+
   const days = useMemo(() => getDaysInMonth(month), [month]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -215,6 +217,12 @@ const TeamCalendarPage: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchTodayStatus(); }, [fetchTodayStatus]);
+
+  useEffect(() => {
+    templateApi.getTemplates()
+      .then((res) => setTemplates(res.data.data || []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -661,6 +669,36 @@ const TeamCalendarPage: React.FC = () => {
                                 {holidays[editCell.date] && (
                                   <div className="text-[10px] bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded">
                                     ⚠️ This is a holiday: {holidays[editCell.date]}
+                                  </div>
+                                )}
+
+                                {/* Template picker */}
+                                {templates.length > 0 && (
+                                  <div>
+                                    <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">Apply Template</label>
+                                    <select
+                                      className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                      value=""
+                                      onChange={(e) => {
+                                        const tpl = templates.find((t) => t._id === e.target.value);
+                                        if (tpl) {
+                                          setEditCell({
+                                            ...editCell,
+                                            status: tpl.status,
+                                            note: tpl.note || '',
+                                            startTime: tpl.startTime || '',
+                                            endTime: tpl.endTime || '',
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <option value="">— Select a template —</option>
+                                      {templates.map((t) => (
+                                        <option key={t._id} value={t._id}>
+                                          {t.name} ({t.status === 'office' ? '🏢' : '🌴'} {t.status}{t.startTime ? ` ⏰${t.startTime}–${t.endTime}` : ''})
+                                        </option>
+                                      ))}
+                                    </select>
                                   </div>
                                 )}
 

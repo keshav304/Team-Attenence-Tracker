@@ -123,6 +123,9 @@ export const templateApi = {
   createTemplate: (data: { name: string; status: 'office' | 'leave'; startTime?: string; endTime?: string; note?: string }) =>
     api.post<ApiResponse<Template>>('/templates', data),
 
+  updateTemplate: (id: string, data: { name?: string; status?: 'office' | 'leave'; startTime?: string; endTime?: string; note?: string }) =>
+    api.put<ApiResponse<Template>>(`/templates/${id}`, data),
+
   deleteTemplate: (id: string) =>
     api.delete<ApiResponse>(`/templates/${id}`),
 };

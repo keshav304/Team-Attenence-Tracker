@@ -371,6 +371,14 @@ export const TemplatesPanel: React.FC<{
   const [newNote, setNewNote] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Edit state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editStatus, setEditStatus] = useState<'office' | 'leave'>('office');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editNote, setEditNote] = useState('');
+
   useEffect(() => {
     templateApi.getTemplates()
       .then((res) => setTemplates(res.data.data || []))
@@ -380,6 +388,39 @@ export const TemplatesPanel: React.FC<{
         setTemplates([]);
       });
   }, []);
+
+  const startEdit = (t: Template) => {
+    setEditId(t._id);
+    setEditName(t.name);
+    setEditStatus(t.status);
+    setEditStartTime(t.startTime || '');
+    setEditEndTime(t.endTime || '');
+    setEditNote(t.note || '');
+    setShowCreate(false);
+  };
+
+  const cancelEdit = () => { setEditId(null); };
+
+  const handleUpdate = async () => {
+    if (!editId || !editName.trim()) { toast.error('Name is required'); return; }
+    setLoading(true);
+    try {
+      const res = await templateApi.updateTemplate(editId, {
+        name: editName.trim(),
+        status: editStatus,
+        startTime: editStartTime || undefined,
+        endTime: editEndTime || undefined,
+        note: editNote || undefined,
+      });
+      setTemplates((prev) => prev.map((t) => (t._id === editId ? res.data.data! : t)));
+      setEditId(null);
+      toast.success('Template updated');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update template');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCreate = async () => {
     if (!newName.trim()) { toast.error('Name is required'); return; }
@@ -407,6 +448,7 @@ export const TemplatesPanel: React.FC<{
     try {
       await templateApi.deleteTemplate(id);
       setTemplates((prev) => prev.filter((t) => t._id !== id));
+      if (editId === id) setEditId(null);
       toast.success('Template deleted');
     } catch {
       toast.error('Failed to delete template');
@@ -438,7 +480,7 @@ export const TemplatesPanel: React.FC<{
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 transition-colors">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">⚡ Quick Templates</h3>
-        <button onClick={() => setShowCreate(!showCreate)}
+        <button onClick={() => { setShowCreate(!showCreate); setEditId(null); }}
           className="text-xs text-primary-600 hover:text-primary-700 font-medium">
           {showCreate ? 'Cancel' : '+ New'}
         </button>
@@ -451,27 +493,71 @@ export const TemplatesPanel: React.FC<{
 
       <div className="space-y-1.5">
         {templates.map((t) => (
-          <div key={t._id} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg group">
-            <div className="flex-1 min-w-0">
-              <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t.name}</span>
-              <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
-                {t.status === 'office' ? '🏢' : '🌴'} {t.status}
-                {t.startTime && ` ⏰ ${t.startTime}–${t.endTime}`}
-                {t.note && ` 📝 ${t.note}`}
-              </span>
-            </div>
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => handleApply(t)}
-                disabled={selectedDates.length === 0 || loading}
-                className="text-[10px] px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 disabled:opacity-50"
-                title={selectedDates.length === 0 ? 'Select dates first' : `Apply to ${selectedDates.length} dates`}>
-                Apply
-              </button>
-              <button onClick={() => handleDelete(t._id)}
-                className="text-[10px] px-2 py-0.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/50">
-                ×
-              </button>
-            </div>
+          <div key={t._id}>
+            {editId === t._id ? (
+              /* ── Inline edit form ── */
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-2">
+                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Template name" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                <div className="flex gap-1">
+                  <button onClick={() => setEditStatus('office')}
+                    className={`flex-1 py-1 text-xs rounded border ${editStatus === 'office' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 font-semibold' : 'border-gray-200 dark:border-gray-600'}`}>
+                    🏢 Office
+                  </button>
+                  <button onClick={() => setEditStatus('leave')}
+                    className={`flex-1 py-1 text-xs rounded border ${editStatus === 'leave' ? 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'border-gray-200 dark:border-gray-600'}`}>
+                    🌴 Leave
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">–</span>
+                  <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                </div>
+                <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value.slice(0, 500))}
+                  placeholder="Note (optional)" className="w-full px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                <div className="flex gap-1">
+                  <button onClick={cancelEdit}
+                    className="flex-1 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600">
+                    Cancel
+                  </button>
+                  <button onClick={handleUpdate} disabled={loading || !editName.trim()}
+                    className="flex-1 py-1.5 bg-primary-600 text-white text-xs rounded hover:bg-primary-700 disabled:opacity-50">
+                    {loading ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Normal display row ── */
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg group">
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t.name}</span>
+                  <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    {t.status === 'office' ? '🏢' : '🌴'} {t.status}
+                    {t.startTime && ` ⏰ ${t.startTime}–${t.endTime}`}
+                    {t.note && ` 📝 ${t.note}`}
+                  </span>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => handleApply(t)}
+                    disabled={selectedDates.length === 0 || loading}
+                    className="text-[10px] px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 disabled:opacity-50"
+                    title={selectedDates.length === 0 ? 'Select dates first' : `Apply to ${selectedDates.length} dates`}>
+                    Apply
+                  </button>
+                  <button onClick={() => startEdit(t)}
+                    className="text-[10px] px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50">
+                    ✏️
+                  </button>
+                  <button onClick={() => handleDelete(t._id)}
+                    className="text-[10px] px-2 py-0.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/50">
+                    ×
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
