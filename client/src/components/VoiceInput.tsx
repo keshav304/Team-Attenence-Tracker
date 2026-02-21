@@ -75,6 +75,11 @@ function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
+/** Max automatic retries for transient network errors. */
+const MAX_RETRIES = 2;
+/** Delay between retries in ms. */
+const RETRY_DELAY_MS = 600;
+
 function friendlyError(errorCode: string): string {
   switch (errorCode) {
     case 'not-allowed':
@@ -82,7 +87,7 @@ function friendlyError(errorCode: string): string {
     case 'no-speech':
       return 'No speech detected. Please try again.';
     case 'network':
-      return 'Network error during speech recognition. Check your connection.';
+      return 'Browser speech service unavailable — retries exhausted. Try again in a moment.';
     case 'aborted':
       return 'Speech recognition was interrupted.';
     case 'audio-capture':
@@ -105,6 +110,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ onTranscript, disabled = false,
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const timeoutsRef = useRef<number[]>([]);
   const errorTimeoutRef = useRef<number | null>(null);
+  const retryCountRef = useRef<number>(0);
 
   /** Set both React state and stateRef synchronously to avoid stale reads in event handlers. */
   const setVoiceState = useCallback((next: VoiceState) => {
@@ -142,10 +148,12 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ onTranscript, disabled = false,
     };
   }, []);
 
-  const startListening = useCallback(() => {
-    if (stateRef.current !== 'idle' && stateRef.current !== 'error') return;
-    setVoiceState('starting');
-
+  /**
+   * Internal helper that creates a new SpeechRecognition session.
+   * Separated from `startListening` so the retry path can call it
+   * without going through the user-facing state guards.
+   */
+  const launchRecognition = useCallback((isRetry: boolean) => {
     const SpeechRecognitionCtor = getSpeechRecognition();
     if (!SpeechRecognitionCtor) {
       setErrorMsg('Speech recognition is not supported in this browser.');
@@ -155,13 +163,18 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ onTranscript, disabled = false,
       return;
     }
 
-    setErrorMsg(null);
+    if (!isRetry) {
+      setErrorMsg(null);
+    }
+
     const recognition = new SpeechRecognitionCtor();
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => {
+      // Successful start — reset retry counter
+      retryCountRef.current = 0;
       setVoiceState('listening');
     };
 
@@ -176,13 +189,26 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ onTranscript, disabled = false,
       if (transcript.trim()) {
         onTranscript(transcript.trim());
       }
+      retryCountRef.current = 0;
       setVoiceState('idle');
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      // For transient `network` errors, retry silently up to MAX_RETRIES times
+      if (event.error === 'network' && retryCountRef.current < MAX_RETRIES) {
+        retryCountRef.current += 1;
+        setErrorMsg(`Reconnecting to speech service… (attempt ${retryCountRef.current + 1})`);
+        // Tear down the current instance before retrying
+        try { recognition.abort(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+        safeTimeout(() => launchRecognition(true), RETRY_DELAY_MS);
+        return;
+      }
+
       const msg = friendlyError(event.error);
       setErrorMsg(msg);
       setVoiceState('error');
+      retryCountRef.current = 0;
       if (errorTimeoutRef.current !== null) { clearTimeout(errorTimeoutRef.current); }
       errorTimeoutRef.current = safeTimeout(() => { setVoiceState('idle'); setErrorMsg(null); }, 4000);
     };
@@ -201,10 +227,18 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ onTranscript, disabled = false,
     } catch {
       setErrorMsg('Failed to start speech recognition.');
       setVoiceState('error');
+      retryCountRef.current = 0;
       if (errorTimeoutRef.current !== null) { clearTimeout(errorTimeoutRef.current); }
       errorTimeoutRef.current = safeTimeout(() => { setVoiceState('idle'); setErrorMsg(null); }, 3000);
     }
   }, [onTranscript, safeTimeout, setVoiceState, stateRef]);
+
+  const startListening = useCallback(() => {
+    if (stateRef.current !== 'idle' && stateRef.current !== 'error') return;
+    retryCountRef.current = 0;
+    setVoiceState('starting');
+    launchRecognition(false);
+  }, [launchRecognition, setVoiceState, stateRef]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
