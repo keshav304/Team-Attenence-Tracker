@@ -94,7 +94,23 @@ const NotificationBell: React.FC = () => {
         setSubscribed(false);
         toast.success('Notifications disabled');
       } else {
-        const subscription = await subscribeToPush();
+        let subscription: PushSubscription | null = null;
+        try {
+          subscription = await subscribeToPush();
+        } catch (pushErr: unknown) {
+          const isBrave = 'brave' in navigator;
+          const errMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+          if (isBrave || /push service/i.test(errMsg)) {
+            toast.error(
+              'Push notifications are blocked by Brave. Go to brave://settings/privacy and enable "Use Google services for push messaging".',
+              { duration: 8000 }
+            );
+          } else {
+            toast.error(`Could not enable notifications: ${errMsg}`);
+          }
+          setPermission(getNotificationPermission());
+          return;
+        }
         if (!subscription) {
           if (Notification.permission === 'denied') {
             toast.error('Notifications blocked. Please allow them in browser settings.');
