@@ -16,6 +16,9 @@ interface Config {
   jwtExpiresIn: string;
   clientUrl: string;
   openRouterApiKey: string;
+  vapidPublicKey: string;
+  vapidPrivateKey: string;
+  vapidSubject: string;
 }
 
 const config: Config = {
@@ -25,6 +28,9 @@ const config: Config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   openRouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY || '',
+  vapidSubject: process.env.VAPID_SUBJECT || 'mailto:admin@dhsync.local',
 };
 
 export default config;

@@ -11,6 +11,7 @@ import {
   toISTDateString,
 } from '../utils/date.js';
 import { sanitizeText } from '../utils/sanitize.js';
+import { notifyTeamStatusChange } from '../utils/pushNotifications.js';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -154,6 +155,19 @@ export const upsertEntry = async (
       updateOp,
       { upsert: true, new: true, runValidators: true }
     );
+
+    // Fire push notification to teammates (notifyTeamStatusChange internally
+    // checks whether `date` is today and exits early if not)
+    try {
+      notifyTeamStatusChange(
+        req.user!.name,
+        userId.toString(),
+        date,
+        status
+      );
+    } catch (pushErr) {
+      console.error('notifyTeamStatusChange error:', pushErr);
+    }
 
     res.json({ success: true, data: entry });
   } catch (error: any) {

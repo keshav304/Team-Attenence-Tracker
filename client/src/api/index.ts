@@ -218,3 +218,30 @@ export const myInsightsApi = {
   getMonthly: (month: string) =>
     api.get<ApiResponse<MyInsightsResponse>>('/my-insights/monthly', { params: { month } }),
 };
+
+// ─── Push Notifications ──────────────────────
+
+/** Shared shape for push-notification preferences across subscribe / getStatus / updatePreferences. */
+export interface PushPreferences {
+  teamStatusChanges?: boolean;
+  weeklyReminder?: boolean;
+  adminAnnouncements?: boolean;
+}
+
+export const pushApi = {
+  subscribe: (endpoint: string, keys: { p256dh: string; auth: string }, preferences?: PushPreferences) =>
+    api.post<ApiResponse>('/push/subscribe', { endpoint, keys, preferences }),
+
+  unsubscribe: (endpoint: string) =>
+    api.delete<ApiResponse>('/push/subscribe', { data: { endpoint } }),
+
+  getStatus: () =>
+    api.get<ApiResponse<{
+      subscribed: boolean;
+      subscriptionCount: number;
+      preferences: PushPreferences;
+    }>>('/push/status'),
+
+  updatePreferences: (preferences: PushPreferences) =>
+    api.put<ApiResponse>('/push/preferences', { preferences }),
+};

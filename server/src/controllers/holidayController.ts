@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import Holiday from '../models/Holiday.js';
+import { notifyAdminAnnouncement } from '../utils/pushNotifications.js';
 
 /**
  * Get holidays for a date range.
@@ -38,6 +39,14 @@ export const createHoliday = async (
   try {
     const { date, name } = req.body;
     const holiday = await Holiday.create({ date, name });
+
+    // Push notification to all subscribers
+    notifyAdminAnnouncement(
+      '🎉 New Holiday Added',
+      `${name} on ${date}`,
+      '/'
+    );
+
     res.status(201).json({ success: true, data: holiday });
   } catch (error: any) {
     if (error.code === 11000) {

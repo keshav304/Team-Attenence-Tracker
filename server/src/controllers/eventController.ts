@@ -2,6 +2,7 @@ import { Response } from 'express';
 import mongoose from 'mongoose';
 import Event from '../models/Event.js';
 import { AuthRequest } from '../types/index.js';
+import { notifyAdminAnnouncement } from '../utils/pushNotifications.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -79,6 +80,17 @@ export const createEvent = async (
     });
 
     const populated = await Event.findById(event._id).populate('createdBy', 'name email');
+
+    // Push notification to all subscribers (fire-and-forget; errors handled internally)
+    try {
+      notifyAdminAnnouncement(
+        '📌 New Event',
+        `${title} on ${date}`,
+        '/'
+      );
+    } catch (pushErr) {
+      console.error(`notifyAdminAnnouncement failed for event "${title}":`, pushErr);
+    }
 
     res.status(201).json({ success: true, data: populated });
   } catch (error: any) {
