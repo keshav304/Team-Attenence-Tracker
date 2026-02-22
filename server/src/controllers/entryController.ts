@@ -305,6 +305,13 @@ export const adminDeleteEntry = async (
   try {
     const { userId, date } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw Errors.validation('Invalid userId.');
+    }
+    if (!date || !DATE_RE.test(date)) {
+      throw Errors.validation('Invalid date format. Expected YYYY-MM-DD.');
+    }
+
     const entry = await Entry.findOneAndDelete({ userId, date });
 
     res.json({

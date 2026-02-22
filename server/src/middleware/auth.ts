@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import User, { UserRole } from '../models/User.js';
 import config from '../config/index.js';
 import { AuthRequest, JwtPayload } from '../types/index.js';
 import { AppError, ErrorCode } from '../utils/AppError.js';
@@ -34,12 +34,12 @@ export const authenticate = async (
       if (jwtErr.name === 'TokenExpiredError') {
         throw new AppError(401, ErrorCode.TOKEN_EXPIRED, 'Session expired. Please login again.');
       }
-      throw new AppError(401, ErrorCode.INVALID_TOKEN, 'Session expired. Please login again.');
+      throw new AppError(401, ErrorCode.INVALID_TOKEN, 'Invalid token. Please login again.');
     }
 
     const user = await User.findById(decoded.userId);
     if (!user || !user.isActive) {
-      throw new AppError(401, ErrorCode.INVALID_TOKEN, 'Session expired. Please login again.');
+      throw new AppError(401, ErrorCode.INVALID_TOKEN, 'Invalid token. Please login again.');
     }
 
     req.user = user;
@@ -56,7 +56,7 @@ export const authenticate = async (
  *   authorizeRole('admin')
  *   authorizeRole('admin', 'member')
  */
-export const authorizeRole = (...roles: Array<'admin' | 'member'>) => {
+export const authorizeRole = (...roles: UserRole[]) => {
   return (req: AuthRequest, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       return next(new AppError(401, ErrorCode.UNAUTHORIZED, 'Authentication is required.'));

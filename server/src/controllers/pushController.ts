@@ -76,7 +76,13 @@ export const unsubscribe = async (
       throw Errors.validation('Endpoint is required.');
     }
 
-    await PushSubscription.deleteOne({ userId, endpoint });
+    const result = await PushSubscription.deleteOne({ userId, endpoint });
+
+    if (result.deletedCount === 0) {
+      res.json({ success: true, message: 'No subscription found.' });
+      return;
+    }
+
     res.json({ success: true, message: 'Unsubscribed successfully.' });
   } catch (error) {
     next(error);

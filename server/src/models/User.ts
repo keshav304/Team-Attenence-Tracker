@@ -1,12 +1,14 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+export type UserRole = 'member' | 'admin';
+
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
   name: string;
   email: string;
   password: string;
-  role: 'member' | 'admin';
+  role: UserRole;
   isActive: boolean;
   favorites: mongoose.Types.ObjectId[];
   createdAt: Date;
@@ -84,8 +86,10 @@ userSchema.pre('validate', function (next) {
  * deduplicate, and check for self-referencing.
  */
 function validateFavoritesUpdate(query: any, update: any): void {
-  const selfId = query._id?.toString?.() ?? query.getQuery?.()._id?.toString?.();
-  if (!selfId) return;
+  const selfId = query._id?.toString?.();
+  if (!selfId) {
+    throw new Error('Favorites validation requires an _id filter on the query.');
+  }
 
   let candidates: any[] | undefined;
 
@@ -110,9 +114,12 @@ function validateFavoritesUpdate(query: any, update: any): void {
 
   if (!candidates || candidates.length === 0) return;
 
-  // Check for self-referencing
+  // Check for self-referencing and guard against null/undefined entries
   for (const fav of candidates) {
-    if (fav?.toString() === selfId) {
+    if (fav == null) {
+      throw new Error('Invalid favorites entry: null or undefined value');
+    }
+    if (fav.toString() === selfId) {
       throw new Error('Cannot add yourself as a favorite');
     }
   }
@@ -144,6 +151,16 @@ userSchema.pre('findOneAndUpdate', function (next) {
 
 // Mirror favorites validation for updateOne
 userSchema.pre('updateOne', function (next) {
+  try {
+    validateFavoritesUpdate(this.getQuery(), this.getUpdate());
+    next();
+  } catch (err: any) {
+    next(err);
+  }
+});
+
+// Mirror favorites validation for updateMany
+userSchema.pre('updateMany', function (next) {
   try {
     validateFavoritesUpdate(this.getQuery(), this.getUpdate());
     next();

@@ -1,5 +1,5 @@
 ---
-name: CustomAgent
+name: TaskOrchestrator
 description: Orchestrates complex tasks by decomposing them into smaller subtasks and delegating to specialized sub-agents for efficient, high-quality implementation.
 argument-hint: A feature request, task description, bug report, or engineering problem to solve.
 # tools: ['vscode', 'execute', 'read', 'agent', 'edit', 'search', 'web', 'todo']
@@ -112,6 +112,21 @@ Database → Backend → Frontend → Testing → Documentation
 - Avoid redundant work
 - Prefer minimal, safe changes
 - Use existing utilities whenever possible
+
+#### Handle sub-agent failures
+
+1. **Immediate response**: Capture the error and its context (sub-agent name, task ID, inputs, partial outputs). Log the failure with enough detail to reproduce. Surface the failure status to the orchestration loop before proceeding.
+
+2. **Retry strategy**: Retry transient failures up to 3 times with exponential backoff (1s → 2s → 4s). Before each retry, verify idempotency — confirm the previous attempt did not partially mutate state. Do not retry deterministic failures (validation errors, missing resources, permission denied).
+
+3. **Fallback procedures**: If retries are exhausted, attempt an alternate sub-agent or degraded execution path using existing utilities (e.g., a simpler implementation that covers the core requirement). Document which fallback was used and any capability gaps.
+
+4. **Partial completion handling**: Mark partial outputs explicitly (status: partial, completed steps, remaining steps). Reconcile state by verifying what was persisted vs. what was intended. Either resume from the last successful checkpoint or compensate by rolling back partial changes to restore consistency.
+
+5. **Abort vs. continue rules**:
+   - **Abort** if the failure compromises data consistency, security, or blocks all downstream tasks.
+   - **Continue** if the failed task is independent and remaining tasks can produce a useful partial result.
+   - Always notify the user when aborting, including what succeeded, what failed, and recommended next steps.
 
 ---
 

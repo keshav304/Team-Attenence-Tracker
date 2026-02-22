@@ -38,53 +38,42 @@ export const createTemplate = async (
     const { name, status, startTime, endTime, note, leaveDuration, halfDayPortion, workingPortion } = req.body;
 
     if (!name || !name.trim()) {
-      res.status(400).json({ success: false, message: 'Template name is required' });
-      return;
+      throw Errors.validation('Template name is required');
     }
 
     if (!['office', 'leave'].includes(status)) {
-      res.status(400).json({ success: false, message: 'Status must be "office" or "leave"' });
-      return;
+      throw Errors.validation('Status must be "office" or "leave"');
     }
 
     if (startTime && !TIME_RE.test(startTime)) {
-      res.status(400).json({ success: false, message: 'startTime must be in HH:mm format' });
-      return;
+      throw Errors.validation('startTime must be in HH:mm format');
     }
     if (endTime && !TIME_RE.test(endTime)) {
-      res.status(400).json({ success: false, message: 'endTime must be in HH:mm format' });
-      return;
+      throw Errors.validation('endTime must be in HH:mm format');
     }
     if (startTime && endTime && endTime <= startTime) {
-      res.status(400).json({ success: false, message: 'endTime must be after startTime' });
-      return;
+      throw Errors.validation('endTime must be after startTime');
     }
     if ((startTime && !endTime) || (!startTime && endTime)) {
-      res.status(400).json({ success: false, message: 'Both startTime and endTime must be provided together' });
-      return;
+      throw Errors.validation('Both startTime and endTime must be provided together');
     }
 
     // Enum validation
     if (leaveDuration !== undefined && !['half', 'full'].includes(leaveDuration)) {
-      res.status(400).json({ success: false, message: 'leaveDuration must be "half" or "full"' });
-      return;
+      throw Errors.validation('leaveDuration must be "half" or "full"');
     }
     // Half-day leave validation
     if (leaveDuration === 'half' && status !== 'leave') {
-      res.status(400).json({ success: false, message: 'Half-day duration is only valid for leave status' });
-      return;
+      throw Errors.validation('Half-day duration is only valid for leave status');
     }
     if (leaveDuration === 'half' && !halfDayPortion) {
-      res.status(400).json({ success: false, message: 'halfDayPortion is required when leaveDuration is half' });
-      return;
+      throw Errors.validation('halfDayPortion is required when leaveDuration is half');
     }
     if (halfDayPortion !== undefined && !['morning', 'afternoon'].includes(halfDayPortion)) {
-      res.status(400).json({ success: false, message: 'halfDayPortion must be "morning" or "afternoon"' });
-      return;
+      throw Errors.validation('halfDayPortion must be "morning" or "afternoon"');
     }
     if (workingPortion !== undefined && !['wfh', 'office'].includes(workingPortion)) {
-      res.status(400).json({ success: false, message: 'workingPortion must be "wfh" or "office"' });
-      return;
+      throw Errors.validation('workingPortion must be "wfh" or "office"');
     }
 
     const templateData: Record<string, any> = {
@@ -125,11 +114,11 @@ export const updateTemplate = async (
     const update: Record<string, any> = {};
     const unsetFields: Record<string, 1> = {};
     if (name !== undefined) {
-      if (!name.trim()) { res.status(400).json({ success: false, message: 'Template name cannot be empty' }); return; }
+      if (!name.trim()) { throw Errors.validation('Template name cannot be empty'); }
       update.name = sanitizeText(name);
     }
     if (status !== undefined) {
-      if (!['office', 'leave'].includes(status)) { res.status(400).json({ success: false, message: 'Status must be "office" or "leave"' }); return; }
+      if (!['office', 'leave'].includes(status)) { throw Errors.validation('Status must be "office" or "leave"'); }
       update.status = status;
     }
     if (startTime !== undefined) update.startTime = startTime || undefined;
@@ -138,7 +127,7 @@ export const updateTemplate = async (
 
     // Load the existing template so we can merge and validate the effective state
     const existing = await Template.findOne({ _id: req.params.id, userId: req.user!._id });
-    if (!existing) { res.status(404).json({ success: false, message: 'Template not found' }); return; }
+    if (!existing) { throw Errors.notFound('Template not found.'); }
 
     // If no fields were provided to update, return the existing template as-is
     const allFieldKeys = ['name', 'status', 'startTime', 'endTime', 'note', 'leaveDuration', 'halfDayPortion', 'workingPortion'];
@@ -152,22 +141,22 @@ export const updateTemplate = async (
     const effectiveStart = update.startTime !== undefined ? update.startTime : existing.startTime;
     const effectiveEnd = update.endTime !== undefined ? update.endTime : existing.endTime;
 
-    if (effectiveStart && !TIME_RE.test(effectiveStart)) { res.status(400).json({ success: false, message: 'startTime must be in HH:mm format' }); return; }
-    if (effectiveEnd && !TIME_RE.test(effectiveEnd)) { res.status(400).json({ success: false, message: 'endTime must be in HH:mm format' }); return; }
+    if (effectiveStart && !TIME_RE.test(effectiveStart)) { throw Errors.validation('startTime must be in HH:mm format'); }
+    if (effectiveEnd && !TIME_RE.test(effectiveEnd)) { throw Errors.validation('endTime must be in HH:mm format'); }
     if ((effectiveStart && !effectiveEnd) || (!effectiveStart && effectiveEnd)) {
-      res.status(400).json({ success: false, message: 'Both startTime and endTime must be provided together' }); return;
+      throw Errors.validation('Both startTime and endTime must be provided together');
     }
-    if (effectiveStart && effectiveEnd && effectiveEnd <= effectiveStart) { res.status(400).json({ success: false, message: 'endTime must be after startTime' }); return; }
+    if (effectiveStart && effectiveEnd && effectiveEnd <= effectiveStart) { throw Errors.validation('endTime must be after startTime'); }
 
     // Enum validation
     if (leaveDuration !== undefined && !['half', 'full'].includes(leaveDuration)) {
-      res.status(400).json({ success: false, message: 'leaveDuration must be "half" or "full"' }); return;
+      throw Errors.validation('leaveDuration must be "half" or "full"');
     }
     if (halfDayPortion !== undefined && !['morning', 'afternoon'].includes(halfDayPortion)) {
-      res.status(400).json({ success: false, message: 'halfDayPortion must be "morning" or "afternoon"' }); return;
+      throw Errors.validation('halfDayPortion must be "morning" or "afternoon"');
     }
     if (workingPortion !== undefined && !['wfh', 'office'].includes(workingPortion)) {
-      res.status(400).json({ success: false, message: 'workingPortion must be "wfh" or "office"' }); return;
+      throw Errors.validation('workingPortion must be "wfh" or "office"');
     }
 
     // Handle half-day leave fields
@@ -175,7 +164,7 @@ export const updateTemplate = async (
     if (effectiveStatus === 'leave' && leaveDuration === 'half') {
       const effectivePortion = halfDayPortion ?? existing.halfDayPortion;
       if (!effectivePortion) {
-        res.status(400).json({ success: false, message: 'halfDayPortion is required when leaveDuration is half' }); return;
+        throw Errors.validation('halfDayPortion is required when leaveDuration is half');
       }
       update.leaveDuration = 'half';
       update.halfDayPortion = effectivePortion;

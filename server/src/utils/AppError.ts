@@ -42,6 +42,7 @@ export const ErrorCode = {
   BAD_REQUEST: 'BAD_REQUEST',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   RATE_LIMITED: 'RATE_LIMITED',
+  UNPROCESSABLE_ENTITY: 'UNPROCESSABLE_ENTITY',
 } as const;
 
 export type ErrorCodeType = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -68,6 +69,7 @@ const defaultMessages: Record<ErrorCodeType, string> = {
   BAD_REQUEST: 'The request could not be processed.',
   INTERNAL_ERROR: 'Something went wrong. Please try again later.',
   RATE_LIMITED: 'Too many requests. Please wait a moment and try again.',
+  UNPROCESSABLE_ENTITY: 'The request could not be processed.',
 };
 
 /* ------------------------------------------------------------------ */
@@ -146,8 +148,11 @@ export const Errors = {
     new AppError(400, ErrorCode.BAD_REQUEST, msg),
 
   internal: (msg?: string) =>
-    new AppError(500, ErrorCode.INTERNAL_ERROR, msg),
+    new AppError(500, ErrorCode.INTERNAL_ERROR, msg, false),
 
   rateLimited: (msg?: string) =>
     new AppError(429, ErrorCode.RATE_LIMITED, msg),
+
+  unprocessableEntity: (msg?: string) =>
+    new AppError(422, ErrorCode.UNPROCESSABLE_ENTITY, msg),
 };

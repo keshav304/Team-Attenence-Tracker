@@ -83,36 +83,20 @@ function validate(schema: z.ZodSchema) {
 export const validateCreateEvent = validate(createEventSchema);
 export const validateUpdateEvent = validate(updateEventSchema);
 
-/** Validate that :id param is a valid MongoDB ObjectId. */
-export const validateEventId = (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): void => {
-  const { id } = req.params;
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-    res.status(400).json({
-      success: false,
-      message: 'Invalid event ID format',
-    });
-    return;
-  }
-  next();
-};
+/** Factory: returns middleware that validates a route param is a valid MongoDB ObjectId. */
+function validateObjectIdParam(paramName: string) {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    const value = req.params[paramName];
+    if (!value || !mongoose.Types.ObjectId.isValid(value)) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid event ID format',
+      });
+      return;
+    }
+    next();
+  };
+}
 
-/** Validate that :eventId param is a valid MongoDB ObjectId (used for RSVP route). */
-export const validateRsvpEventId = (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): void => {
-  const { eventId } = req.params;
-  if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
-    res.status(400).json({
-      success: false,
-      message: 'Invalid event ID format',
-    });
-    return;
-  }
-  next();
-};
+/** Validate that :id param is a valid MongoDB ObjectId. */
+export const validateEventId = validateObjectIdParam('id');

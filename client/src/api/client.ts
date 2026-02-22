@@ -1,5 +1,10 @@
 import axios, { AxiosError } from 'axios';
 
+interface ServerAxiosError extends AxiosError {
+  serverMessage?: string;
+  serverCode?: string;
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
@@ -25,9 +30,10 @@ api.interceptors.response.use(
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       // Only redirect if not already on login/register pages
+      const pathname = window.location.pathname;
       if (
-        !window.location.pathname.includes('/login') &&
-        !window.location.pathname.includes('/register')
+        pathname !== '/login' && !pathname.startsWith('/login/') &&
+        pathname !== '/register' && !pathname.startsWith('/register/')
       ) {
         window.location.href = '/login';
       }
@@ -35,8 +41,9 @@ api.interceptors.response.use(
 
     // Attach a human-readable message to the error so callers can use it
     if (data?.message) {
-      (error as any).serverMessage = data.message;
-      (error as any).serverCode = data.code;
+      const serverError = error as ServerAxiosError;
+      serverError.serverMessage = data.message;
+      serverError.serverCode = data.code;
     }
 
     return Promise.reject(error);

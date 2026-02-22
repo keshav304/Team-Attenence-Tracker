@@ -6,6 +6,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { AuthRequest } from '../types/index.js';
 
 /* ------------------------------------------------------------------ */
 /*  Structured logger                                                 */
@@ -15,19 +16,40 @@ const SENSITIVE_KEYS = new Set([
   'password',
   'newPassword',
   'currentPassword',
+  'oldPassword',
   'token',
+  'accessToken',
+  'refreshToken',
   'authorization',
   'cookie',
   'secret',
+  'apiKey',
+  'apiSecret',
+  'clientSecret',
+  'ssn',
+  'creditCard',
+  'cardNumber',
+  'cvv',
+  'otp',
+  'pin',
+  'sessionId',
 ]);
 
-function sanitizeBody(body: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  if (!body || typeof body !== 'object') return undefined;
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body)) {
-    sanitized[key] = SENSITIVE_KEYS.has(key.toLowerCase()) ? '[REDACTED]' : value;
+function sanitizeBody(body: unknown): unknown {
+  if (body === null || body === undefined) return undefined;
+  if (Array.isArray(body)) return body.map(item => sanitizeBody(item));
+  if (typeof body === 'object') {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+      if (SENSITIVE_KEYS.has(key.toLowerCase())) {
+        sanitized[key] = '[REDACTED]';
+      } else {
+        sanitized[key] = sanitizeBody(value);
+      }
+    }
+    return sanitized;
   }
-  return sanitized;
+  return body;
 }
 
 export const logger = {
@@ -57,11 +79,27 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 
   res.on('finish', () => {
     const duration = Date.now() - start;
-    const userId = (req as any).user?._id?.toString() ?? null;
+    const userId = (req as AuthRequest).user?._id?.toString() ?? null;
+
+    // Strip sensitive query parameters from the logged path
+    const sanitizePath = (url: string): string => {
+      const qIndex = url.indexOf('?');
+      if (qIndex === -1) return url;
+      const basePath = url.substring(0, qIndex);
+      const params = new URLSearchParams(url.substring(qIndex + 1));
+      const sensitiveParams = new Set(['token', 'code', 'password', 'reset', 'auth', 'otp', 'secret']);
+      for (const key of [...params.keys()]) {
+        if (sensitiveParams.has(key.toLowerCase())) {
+          params.set(key, '[REDACTED]');
+        }
+      }
+      const remaining = params.toString();
+      return remaining ? `${basePath}?${remaining}` : basePath;
+    };
 
     const logEntry: Record<string, unknown> = {
       method: req.method,
-      path: req.originalUrl,
+      path: sanitizePath(req.originalUrl),
       status: res.statusCode,
       duration: `${duration}ms`,
       userId,

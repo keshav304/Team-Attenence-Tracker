@@ -51,13 +51,14 @@ export const createUser = async (
 ): Promise<void> => {
   try {
     const { name, email, password, role } = req.body;
+    const normalizedEmail = email?.toLowerCase();
 
-    const existingUser = await User.findOne({ email: email?.toLowerCase() });
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       throw Errors.emailExists();
     }
 
-    const user = await User.create({ name, email, password, role: role || 'member' });
+    const user = await User.create({ name, email: normalizedEmail, password, role: role || 'member' });
     res.status(201).json({ success: true, data: user.toJSON() });
   } catch (error) {
     next(error);
@@ -79,7 +80,7 @@ export const updateUser = async (
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email;
+    if (email !== undefined) updateData.email = email.trim().toLowerCase();
     if (role !== undefined) updateData.role = role;
     if (isActive !== undefined) updateData.isActive = isActive;
 

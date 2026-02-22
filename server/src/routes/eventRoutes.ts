@@ -11,7 +11,6 @@ import {
   validateCreateEvent,
   validateUpdateEvent,
   validateEventId,
-  validateRsvpEventId,
 } from '../middleware/eventValidation.js';
 
 const router = Router();
@@ -23,7 +22,7 @@ router.use(authenticate);
 router.get('/', getEvents);
 
 // Any authenticated user can RSVP
-router.post('/:eventId/rsvp', validateRsvpEventId, rsvpToEvent);
+router.post('/:id/rsvp', validateEventId, rsvpToEvent);
 
 // Admin-only: create, update, delete
 router.post('/', requireAdmin, validateCreateEvent, createEvent);

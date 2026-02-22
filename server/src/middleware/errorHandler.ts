@@ -21,7 +21,7 @@ function isMongooseValidationError(err: any): boolean {
 
 /** Detect Mongo duplicate-key error */
 function isMongoDuplicateKeyError(err: any): boolean {
-  return err.code === 11000 || err.name === 'MongoServerError' && err.code === 11000;
+  return err.name === 'MongoServerError' && err.code === 11000;
 }
 
 /** Detect JWT errors */
@@ -108,6 +108,13 @@ export function globalErrorHandler(
         ? ErrorCode.TOKEN_EXPIRED
         : ErrorCode.INVALID_TOKEN;
 
+    const message =
+      err.name === 'TokenExpiredError'
+        ? 'Session expired. Please login again.'
+        : err.name === 'NotBeforeError'
+          ? 'Token not yet valid. Please try again later.'
+          : 'Invalid token. Please login again.';
+
     logger.error({
       type: 'jwt',
       jwtErrorName: err.name,
@@ -117,7 +124,7 @@ export function globalErrorHandler(
 
     res.status(401).json({
       success: false,
-      message: 'Session expired. Please login again.',
+      message,
       code,
     });
     return;

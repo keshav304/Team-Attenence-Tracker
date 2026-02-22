@@ -264,6 +264,7 @@ export const chat = async (req: Request, res: Response, next: NextFunction): Pro
     try {
       queryVector = await embedText(question);
     } catch (embErr) {
+      console.error('Chat: embedText failed:', embErr);
       throw Errors.serviceUnavailable('Failed to process the question (embedding error).');
     }
 
@@ -272,6 +273,7 @@ export const chat = async (req: Request, res: Response, next: NextFunction): Pro
     try {
       chunks = await searchDocs(queryVector);
     } catch (searchErr) {
+      console.error('Chat: searchDocs failed:', searchErr);
       throw Errors.serviceUnavailable('Failed to search the documentation.');
     }
 

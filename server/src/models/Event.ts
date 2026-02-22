@@ -120,5 +120,16 @@ eventSchema.index({ 'rsvps.userId': 1 });
 // Unique compound index to prevent duplicate RSVPs per event
 eventSchema.index({ _id: 1, 'rsvps.userId': 1 }, { unique: true });
 
+// Pre-save hook: reject duplicate userIds within the rsvps array
+eventSchema.pre('save', function (next) {
+  if (this.rsvps && this.rsvps.length > 0) {
+    const ids = this.rsvps.map(r => r.userId.toString());
+    if (ids.length !== new Set(ids).size) {
+      return next(new Error('Duplicate RSVP entries for the same user are not allowed.'));
+    }
+  }
+  next();
+});
+
 const Event = mongoose.model<IEvent>('Event', eventSchema);
 export default Event;

@@ -479,21 +479,16 @@ export const parseCommand = async (
     try {
       plan = JSON.parse(jsonStr);
     } catch {
-      res.status(422).json({
-        success: false,
-        message: 'Could not understand the command. Please try rephrasing it.',
-        raw: llmResponse.substring(0, 500),
-      });
-      return;
+      throw Errors.unprocessableEntity(
+        `Could not understand the command. Please try rephrasing it. [raw: ${llmResponse.substring(0, 500)}]`,
+      );
     }
 
     // Validate plan structure
     if (!plan.actions || !Array.isArray(plan.actions) || plan.actions.length === 0) {
-      res.status(422).json({
-        success: false,
-        message: 'No actions could be extracted from the command. Please be more specific.',
-      });
-      return;
+      throw Errors.unprocessableEntity(
+        'No actions could be extracted from the command. Please be more specific.',
+      );
     }
 
     res.json({ success: true, data: plan });

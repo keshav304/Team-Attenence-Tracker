@@ -15,19 +15,25 @@ const generateToken = (user: { _id: string; role: string }): string => {
   } as jwt.SignOptions);
 };
 
-export const register = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { name, email, password } = req.body;
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (!email) {
+      throw Errors.validation('Email is required.');
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       throw Errors.emailExists();
     }
 
-    const user = await User.create({ name, email, password });
+    const user = await User.create({ name, email: normalizedEmail, password });
     const token = generateToken({ _id: user._id.toString(), role: user.role });
 
-    _res.status(201).json({
+    res.status(201).json({
       success: true,
       data: {
         token,

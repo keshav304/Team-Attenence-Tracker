@@ -73,6 +73,10 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
     : 'User';
 
   const fetchPreview = useCallback(async () => {
+    if (!sourceUserId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setStaleWarning(false);
     try {
@@ -126,6 +130,10 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
   };
 
   const handleApply = async () => {
+    if (!sourceUserId) {
+      toast.error('Source user is unavailable');
+      return;
+    }
     if (selectedDates.size === 0) {
       toast.error('No dates selected');
       return;
@@ -205,6 +213,12 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
             <div className="flex items-center justify-center py-12" role="status">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
               <span className="sr-only">Loading schedule preview…</span>
+            </div>
+          )}
+
+          {!sourceUserId && !loading && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-sm text-red-700 dark:text-red-400">
+              ⚠️ Source user is unavailable. This notification may be outdated.
             </div>
           )}
 
@@ -394,7 +408,7 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
             </button>
             <button
               onClick={handleApply}
-              disabled={applying || selectedDates.size === 0 || loading}
+              disabled={applying || selectedDates.size === 0 || loading || !sourceUserId}
               className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               {applying ? 'Applying…' : `Align ${selectedDates.size} Day${selectedDates.size !== 1 ? 's' : ''}`}

@@ -298,11 +298,7 @@ export const matchApply = async (
     });
 
     if (staleCheck) {
-      res.status(409).json({
-        success: false,
-        message: 'Schedule has changed. Please review again.',
-      });
-      return;
+      throw Errors.conflict('Schedule has changed. Please review again.');
     }
 
     const results: { date: string; success: boolean; message?: string }[] = [];
@@ -367,15 +363,8 @@ export const matchApply = async (
         } catch (err: any) {
           console.error('matchApply: entry write failed', { date, error: err.message });
           await session.abortTransaction();
-          res.status(500).json({
-            success: false,
-            data: {
-              processed: results.filter((r) => r.success).length,
-              skipped: results.filter((r) => !r.success).length + 1,
-              results: [...results, { date, success: false, message: 'Failed to apply — transaction aborted' }],
-            },
-          });
-          return;
+          session.endSession();
+          throw Errors.internal(`Failed to apply schedule on ${date}. Transaction aborted.`);
         }
       }
 

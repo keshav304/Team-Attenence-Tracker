@@ -76,16 +76,14 @@ export const getEvents = async (
 
       if (startDate) {
         if (!DATE_RE.test(startDate)) {
-          res.status(400).json({ success: false, message: 'startDate must be YYYY-MM-DD' });
-          return;
+          throw Errors.validation('startDate must be YYYY-MM-DD');
         }
         dateFilter.$gte = startDate;
       }
 
       if (endDate) {
         if (!DATE_RE.test(endDate)) {
-          res.status(400).json({ success: false, message: 'endDate must be YYYY-MM-DD' });
-          return;
+          throw Errors.validation('endDate must be YYYY-MM-DD');
         }
         dateFilter.$lte = endDate;
       }
@@ -151,15 +149,11 @@ export const createEvent = async (
     const populated = await Event.findById(event._id).populate('createdBy', 'name email');
 
     // Push notification to all subscribers (fire-and-forget; errors handled internally)
-    try {
-      notifyAdminAnnouncement(
-        '📌 New Event',
-        `${title} on ${date}`,
-        '/'
-      );
-    } catch (pushErr) {
-      console.error(`notifyAdminAnnouncement failed for event "${title}":`, pushErr);
-    }
+    notifyAdminAnnouncement(
+      '📌 New Event',
+      `${title} on ${date}`,
+      '/'
+    );
 
     // In-app notification for all active members
     const displayDate = formatDateForDisplay(date);
@@ -278,7 +272,7 @@ export const deleteEvent = async (
 
 /**
  * RSVP to an event.
- * POST /api/events/:eventId/rsvp
+ * POST /api/events/:id/rsvp
  * Body: { status: "going" | "not_going" | "maybe" }
  */
 export const rsvpToEvent = async (
@@ -291,17 +285,15 @@ export const rsvpToEvent = async (
       throw Errors.unauthorized();
     }
 
-    const { eventId } = req.params;
+    const { id: eventId } = req.params;
     const { status } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(eventId)) {
-      res.status(400).json({ success: false, message: 'Invalid event ID format' });
-      return;
+      throw Errors.validation('Invalid event ID format.');
     }
 
     if (!['going', 'not_going', 'maybe'].includes(status)) {
-      res.status(400).json({ success: false, message: 'Status must be going, not_going, or maybe' });
-      return;
+      throw Errors.validation('Status must be going, not_going, or maybe.');
     }
 
     const userId = req.user._id;
@@ -350,7 +342,7 @@ export const rsvpToEvent = async (
         // E11000 duplicate key error means a concurrent request already pushed;
         // retry the in-place update so the latest status wins.
         if (pushErr.code === 11000) {
-          await Event.findOneAndUpdate(
+          const retryResult = await Event.findOneAndUpdate(
             { _id: eventId, 'rsvps.userId': userId },
             {
               $set: {
@@ -360,6 +352,9 @@ export const rsvpToEvent = async (
             },
             { new: true }
           );
+          if (!retryResult) {
+            throw Errors.notFound('Failed to update RSVP: event or RSVP entry not found.');
+          }
         } else {
           throw pushErr;
         }

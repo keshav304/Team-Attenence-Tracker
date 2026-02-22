@@ -108,11 +108,7 @@ export const getFavorites = async (
       throw Errors.notFound('User not found.');
     }
 
-    // Count only active favorites for accurate pagination
-    const activeCount = await User.countDocuments({
-      _id: { $in: currentUser.favorites },
-      isActive: true,
-    });
+    // Find active favorite IDs
     const activeIds = (
       await User.find(
         { _id: { $in: currentUser.favorites }, isActive: true },
@@ -126,7 +122,7 @@ export const getFavorites = async (
       activeIdSet.has(id.toString())
     );
 
-    const totalFavorites = activeCount;
+    const totalFavorites = orderedActiveIds.length;
     const start = (page - 1) * limit;
     const paginatedIds = orderedActiveIds.slice(start, start + limit);
 
