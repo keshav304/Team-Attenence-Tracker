@@ -62,6 +62,7 @@ const MyCalendarPage: React.FC = () => {
   const [dragStart, setDragStart] = useState<string | null>(null);
   const mouseIsDown = useRef(false);
   const dragOccurredRef = useRef(false);
+  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
   const calendarAreaRef = useRef<HTMLDivElement>(null);
 
@@ -144,17 +145,27 @@ const MyCalendarPage: React.FC = () => {
     return days.filter((d) => d >= ordered[0] && d <= ordered[1] && isSelectable(d));
   };
 
-  const handleMouseDown = (date: string) => {
+  const handleMouseDown = (date: string, clientX: number, clientY: number) => {
     if (!isSelectable(date)) return;
     mouseIsDown.current = true;
     dragOccurredRef.current = false;
+    mouseDownPos.current = { x: clientX, y: clientY };
     setDragStart(date);
     setSelectedDates([date]);
     // Don't set isDragging yet — only transition to drag on mouse-enter of a different cell
   };
 
-  const handleMouseEnter = (date: string) => {
+  const DRAG_THRESHOLD = 5; // px – ignore mouseenter if cursor barely moved (layout-shift guard)
+
+  const handleMouseEnter = (date: string, clientX: number, clientY: number) => {
     if (!mouseIsDown.current || !dragStart || !isSelectable(date)) return;
+    // Guard against layout-shift-triggered mouseenter: require the cursor to have
+    // actually moved from the mousedown position before we activate drag-selection.
+    if (mouseDownPos.current) {
+      const dx = clientX - mouseDownPos.current.x;
+      const dy = clientY - mouseDownPos.current.y;
+      if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+    }
     // Only start dragging when the cursor actually moves to a different cell
     if (date !== dragStart) {
       setIsDragging(true);
@@ -546,11 +557,11 @@ const MyCalendarPage: React.FC = () => {
                           if (e.ctrlKey || e.metaKey) {
                             toggleDateSelection(date);
                           } else {
-                            handleMouseDown(date);
+                            handleMouseDown(date, e.clientX, e.clientY);
                           }
                         }
                       }}
-                      onMouseEnter={() => handleMouseEnter(date)}
+                      onMouseEnter={(e) => handleMouseEnter(date, e.clientX, e.clientY)}
                       onMouseUp={() => {
                         const wasDrag = dragOccurredRef.current;
                         handleMouseUp();
