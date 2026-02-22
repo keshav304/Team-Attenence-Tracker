@@ -16,7 +16,7 @@ export const getNotifications = async (
     const userId = req.user!._id;
 
     const notifications = await Notification.find({ userId })
-      .populate('sourceUserId', '_id name email')
+      .populate('sourceUserId', '_id name')
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
@@ -112,28 +112,47 @@ export const createFavoriteNotifications = async (
   try {
     if (officeDates.length === 0) return;
 
-    // Find users who have this person as a favorite
-    const fans = await User.find({
-      favorites: new mongoose.Types.ObjectId(sourceUserId),
-      isActive: true,
-      _id: { $ne: new mongoose.Types.ObjectId(sourceUserId) },
-    }).select('_id');
-
-    if (fans.length === 0) return;
-
+    const BATCH_SIZE = 500;
     const dateCount = officeDates.length;
     const message = `${sourceName} added ${dateCount} office day${dateCount > 1 ? 's' : ''}. Want to align?`;
+    const sourceObjId = new mongoose.Types.ObjectId(sourceUserId);
 
-    const notifications = fans.map((fan) => ({
-      userId: fan._id,
-      type: 'favorite_schedule_update' as const,
-      sourceUserId: new mongoose.Types.ObjectId(sourceUserId),
-      affectedDates: officeDates,
-      message,
-      isRead: false,
-    }));
+    // Stream fans via cursor to avoid loading all into memory at once
+    const cursor = User.find({
+      favorites: sourceObjId,
+      isActive: true,
+      _id: { $ne: sourceObjId },
+    }).select('_id').cursor();
 
-    await Notification.insertMany(notifications);
+    let batch: Array<{
+      userId: mongoose.Types.ObjectId;
+      type: 'favorite_schedule_update';
+      sourceUserId: mongoose.Types.ObjectId;
+      affectedDates: string[];
+      message: string;
+      isRead: boolean;
+    }> = [];
+
+    for await (const fan of cursor) {
+      batch.push({
+        userId: fan._id,
+        type: 'favorite_schedule_update' as const,
+        sourceUserId: sourceObjId,
+        affectedDates: officeDates,
+        message,
+        isRead: false,
+      });
+
+      if (batch.length >= BATCH_SIZE) {
+        await Notification.insertMany(batch);
+        batch = [];
+      }
+    }
+
+    // Flush remaining
+    if (batch.length > 0) {
+      await Notification.insertMany(batch);
+    }
   } catch (error) {
     // Don't let notification failures block the main operation
     console.error('createFavoriteNotifications error:', error);

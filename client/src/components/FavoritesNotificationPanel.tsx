@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { notificationsApi } from '../api';
 import type { FavoriteNotification } from '../types';
 import AlignScheduleModal from './AlignScheduleModal';
 
 const FavoritesNotificationPanel: React.FC = () => {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<FavoriteNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<FavoriteNotification | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchUnreadCount = useCallback(async () => {
     try {
@@ -58,6 +61,33 @@ const FavoritesNotificationPanel: React.FC = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Keyboard handling for dropdown
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        return;
+      }
+      // Arrow key navigation within the dropdown
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const items = dropdownRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+        if (!items || items.length === 0) return;
+        const currentIdx = Array.from(items).findIndex((el) => el === document.activeElement);
+        let nextIdx: number;
+        if (e.key === 'ArrowDown') {
+          nextIdx = currentIdx < items.length - 1 ? currentIdx + 1 : 0;
+        } else {
+          nextIdx = currentIdx > 0 ? currentIdx - 1 : items.length - 1;
+        }
+        items[nextIdx].focus();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
   const handleNotificationClick = async (n: FavoriteNotification) => {
     // Mark as read
     if (!n.isRead) {
@@ -71,7 +101,14 @@ const FavoritesNotificationPanel: React.FC = () => {
         // ignore
       }
     }
-    setSelectedNotification(n);
+    // Event notifications → navigate to Events page
+    if (n.type === 'event_created' || n.type === 'event_updated') {
+      setOpen(false);
+      navigate('/events');
+      return;
+    }
+    // Schedule notifications → open align modal with up-to-date read state
+    setSelectedNotification({ ...n, isRead: true });
     setOpen(false);
   };
 
@@ -92,7 +129,9 @@ const FavoritesNotificationPanel: React.FC = () => {
   };
 
   const formatTimeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) return '';
+    const diff = Date.now() - parsed.getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'Just now';
     if (mins < 60) return `${mins}m ago`;
@@ -100,7 +139,7 @@ const FavoritesNotificationPanel: React.FC = () => {
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days}d ago`;
-    return new Date(dateStr).toLocaleDateString();
+    return parsed.toLocaleDateString();
   };
 
   return (
@@ -116,6 +155,9 @@ const FavoritesNotificationPanel: React.FC = () => {
               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
           aria-label={`Favorite notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-controls={open ? 'favorites-dropdown' : undefined}
           title="Favorite member updates"
         >
           <svg className="w-5 h-5" fill={unreadCount > 0 ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -134,7 +176,13 @@ const FavoritesNotificationPanel: React.FC = () => {
 
         {/* Dropdown */}
         {open && (
-          <div className="absolute right-0 top-11 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden animate-fade-in">
+          <div
+            ref={dropdownRef}
+            id="favorites-dropdown"
+            role="menu"
+            aria-label="Favorite updates"
+            className="absolute right-0 top-11 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden animate-fade-in"
+          >
             {/* Header */}
             <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -157,9 +205,12 @@ const FavoritesNotificationPanel: React.FC = () => {
                   No favorite updates yet
                 </div>
               )}
-              {notifications.map((n) => (
+              {notifications.map((n) => {
+                const isEventNotif = n.type === 'event_created' || n.type === 'event_updated';
+                return (
                 <button
                   key={n._id}
+                  role="menuitem"
                   onClick={() => handleNotificationClick(n)}
                   className={`w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors ${
                     !n.isRead ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
@@ -174,15 +225,16 @@ const FavoritesNotificationPanel: React.FC = () => {
                         {n.message}
                       </p>
                       <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-                        {formatTimeAgo(n.createdAt)} · {n.affectedDates.length} day{n.affectedDates.length !== 1 ? 's' : ''}
+                        {formatTimeAgo(n.createdAt)}{isEventNotif ? '' : (() => { const count = n.affectedDates?.length ?? 0; return ` · ${count} day${count !== 1 ? 's' : ''}`; })()}
                       </p>
                     </div>
                     <span className="text-xs text-primary-500 dark:text-primary-400 shrink-0 mt-0.5">
-                      Align →
+                      {isEventNotif ? 'View →' : 'Align →'}
                     </span>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

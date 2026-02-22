@@ -209,6 +209,9 @@ export const eventApi = {
 
   deleteEvent: (id: string) =>
     api.delete<ApiResponse>(`/events/${id}`),
+
+  rsvp: (eventId: string, status: 'going' | 'not_going' | 'maybe') =>
+    api.post<ApiResponse<CalendarEvent>>(`/events/${eventId}/rsvp`, { status }),
 };
 
 // ─── Analytics ───────────────────────────────

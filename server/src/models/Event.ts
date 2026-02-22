@@ -12,6 +12,15 @@ export const EVENT_TYPES = [
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
+export const RSVP_STATUSES = ['going', 'not_going', 'maybe'] as const;
+export type RsvpStatus = (typeof RSVP_STATUSES)[number];
+
+export interface IRsvp {
+  userId: mongoose.Types.ObjectId;
+  status: RsvpStatus;
+  respondedAt: Date;
+}
+
 export interface IEvent extends Document {
   _id: mongoose.Types.ObjectId;
   date: string; // YYYY-MM-DD
@@ -19,9 +28,30 @@ export interface IEvent extends Document {
   description?: string;
   eventType?: EventType;
   createdBy: mongoose.Types.ObjectId;
+  rsvps: IRsvp[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+const rsvpSchema = new Schema<IRsvp>(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: RSVP_STATUSES,
+      required: true,
+    },
+    respondedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
 
 const eventSchema = new Schema<IEvent>(
   {
@@ -67,6 +97,10 @@ const eventSchema = new Schema<IEvent>(
       ref: 'User',
       required: [true, 'Created by user ID is required'],
     },
+    rsvps: {
+      type: [rsvpSchema],
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -78,6 +112,10 @@ eventSchema.index(
   { date: 1, title: 1 },
   { unique: true, collation: { locale: 'en', strength: 2 } }
 );
+
+// Performance indexes
+eventSchema.index({ date: 1 });
+eventSchema.index({ 'rsvps.userId': 1 });
 
 const Event = mongoose.model<IEvent>('Event', eventSchema);
 export default Event;

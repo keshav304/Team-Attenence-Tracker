@@ -8,6 +8,31 @@ import { isMemberAllowedDate } from '../utils/date.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Lean entry shape returned by .lean() queries. */
+interface LeanEntry {
+  _id: mongoose.Types.ObjectId;
+  date: string;
+  status: string;
+  leaveDuration?: string;
+  halfDayPortion?: string;
+  workingPortion?: string;
+  note?: string;
+  startTime?: string;
+  endTime?: string;
+  updatedAt?: string | Date;
+}
+
+/**
+ * Validate that a date string is both well-formatted (YYYY-MM-DD) and
+ * represents a real calendar date (e.g. rejects 2026-02-30).
+ */
+const isValidDate = (dateStr: string): boolean => {
+  if (!DATE_RE.test(dateStr)) return false;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+};
+
 /** Check if a date is a weekend (Sat/Sun). */
 const isWeekend = (dateStr: string): boolean => {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -51,7 +76,7 @@ export const matchPreview = async (
       res.status(400).json({ success: false, message: 'Valid favoriteUserId is required' });
       return;
     }
-    if (!startDate || !DATE_RE.test(startDate) || !endDate || !DATE_RE.test(endDate)) {
+    if (!startDate || !isValidDate(startDate) || !endDate || !isValidDate(endDate)) {
       res.status(400).json({ success: false, message: 'Valid startDate and endDate required (YYYY-MM-DD)' });
       return;
     }
@@ -83,13 +108,13 @@ export const matchPreview = async (
     ]);
 
     // Build lookup maps
-    const favEntryMap: Record<string, any> = {};
-    favoriteEntries.forEach((e: any) => { favEntryMap[e.date] = e; });
+    const favEntryMap: Record<string, LeanEntry> = {};
+    favoriteEntries.forEach((e) => { favEntryMap[e.date] = e as unknown as LeanEntry; });
 
-    const userEntryMap: Record<string, any> = {};
-    userEntries.forEach((e: any) => { userEntryMap[e.date] = e; });
+    const userEntryMap: Record<string, LeanEntry> = {};
+    userEntries.forEach((e) => { userEntryMap[e.date] = e as unknown as LeanEntry; });
 
-    const holidaySet = new Set(holidays.map((h: any) => h.date));
+    const holidaySet = new Set(holidays.map((h: any) => h.date as string));
 
     // Generate dates in range
     const dates: string[] = [];
@@ -203,7 +228,7 @@ export const matchPreview = async (
       },
     });
   } catch (error: any) {
-    console.error('matchPreview error:', error);
+      console.error('matchPreview error:', { message: (error as Error).message, stack: (error as Error).stack });
     res.status(500).json({ success: false, message: 'Failed to generate match preview' });
   }
 };
@@ -232,6 +257,13 @@ export const matchApply = async (
       return;
     }
 
+    // Validate all date strings up-front before any DB work
+    const invalidDates = dates.filter((d: string) => !isValidDate(d));
+    if (invalidDates.length > 0) {
+      res.status(400).json({ success: false, message: `Invalid date(s): ${invalidDates.join(', ')}` });
+      return;
+    }
+
     // Verify favorite user still exists
     const favoriteUser = await User.findById(favoriteUserId);
     if (!favoriteUser || !favoriteUser.isActive) {
@@ -240,8 +272,8 @@ export const matchApply = async (
     }
 
     // Re-fetch favorite's entries for the requested dates
-    const minDate = dates.reduce((a, b) => (a < b ? a : b));
-    const maxDate = dates.reduce((a, b) => (a > b ? a : b));
+    const minDate = dates.reduce((a: string, b: string) => (a < b ? a : b));
+    const maxDate = dates.reduce((a: string, b: string) => (a > b ? a : b));
 
     const [favoriteEntries, userEntries, holidays] = await Promise.all([
       Entry.find({
@@ -257,13 +289,13 @@ export const matchApply = async (
       }).lean(),
     ]);
 
-    const favEntryMap: Record<string, any> = {};
-    favoriteEntries.forEach((e: any) => { favEntryMap[e.date] = e; });
+    const favEntryMap: Record<string, LeanEntry> = {};
+    favoriteEntries.forEach((e) => { favEntryMap[e.date] = e as unknown as LeanEntry; });
 
-    const userEntryMap: Record<string, any> = {};
-    userEntries.forEach((e: any) => { userEntryMap[e.date] = e; });
+    const userEntryMap: Record<string, LeanEntry> = {};
+    userEntries.forEach((e) => { userEntryMap[e.date] = e as unknown as LeanEntry; });
 
-    const holidaySet = new Set(holidays.map((h: any) => h.date));
+    const holidaySet = new Set(holidays.map((h: any) => h.date as string));
 
     // Check if favorite's schedule has changed
     const staleCheck = dates.some((date) => {
@@ -280,82 +312,94 @@ export const matchApply = async (
     }
 
     const results: { date: string; success: boolean; message?: string }[] = [];
+    const session = await mongoose.startSession();
 
-    for (const date of dates) {
-      // Validate date format
-      if (!DATE_RE.test(date)) {
-        results.push({ date, success: false, message: 'Invalid date format' });
-        continue;
-      }
+    try {
+      session.startTransaction();
 
-      // Skip weekends
-      if (isWeekend(date)) {
-        results.push({ date, success: false, message: 'Weekend' });
-        continue;
-      }
+      for (const date of dates) {
+        // Skip weekends
+        if (isWeekend(date)) {
+          results.push({ date, success: false, message: 'Weekend' });
+          continue;
+        }
 
-      // Skip holidays
-      if (holidaySet.has(date)) {
-        results.push({ date, success: false, message: 'Holiday' });
-        continue;
-      }
+        // Skip holidays
+        if (holidaySet.has(date)) {
+          results.push({ date, success: false, message: 'Holiday' });
+          continue;
+        }
 
-      // Check editing window
-      if (!isAdmin && !isMemberAllowedDate(date)) {
-        results.push({ date, success: false, message: 'Outside editing window' });
-        continue;
-      }
+        // Check editing window
+        if (!isAdmin && !isMemberAllowedDate(date)) {
+          results.push({ date, success: false, message: 'Outside editing window' });
+          continue;
+        }
 
-      // Check user's current status
-      const userEntry = userEntryMap[date];
-      const userStatus = userEntry?.status || 'wfh';
+        // Check user's current status
+        const userEntry = userEntryMap[date];
+        const userStatus = userEntry?.status || 'wfh';
 
-      // Already office
-      if (userStatus === 'office') {
-        results.push({ date, success: true, message: 'Already matching' });
-        continue;
-      }
+        // Already office
+        if (userStatus === 'office') {
+          results.push({ date, success: true, message: 'Already matching' });
+          continue;
+        }
 
-      // User has leave — don't override unless explicitly allowed
-      if (userStatus === 'leave' && !overrideLeave) {
-        results.push({ date, success: false, message: 'Leave conflict — override not enabled' });
-        continue;
-      }
+        // User has leave — don't override unless explicitly allowed
+        if (userStatus === 'leave' && !overrideLeave) {
+          results.push({ date, success: false, message: 'Leave conflict — override not enabled' });
+          continue;
+        }
 
-      // Apply: set to office
-      try {
-        await Entry.findOneAndUpdate(
-          { userId, date },
-          {
-            $set: { userId, date, status: 'office' },
-            $unset: {
-              leaveDuration: 1,
-              halfDayPortion: 1,
-              workingPortion: 1,
-              note: 1,
-              startTime: 1,
-              endTime: 1,
+        // Apply: set to office
+        try {
+          await Entry.findOneAndUpdate(
+            { userId, date },
+            {
+              $set: { userId, date, status: 'office' },
+              $unset: {
+                leaveDuration: 1,
+                halfDayPortion: 1,
+                workingPortion: 1,
+                note: 1,
+                startTime: 1,
+                endTime: 1,
+              },
             },
-          },
-          { upsert: true, new: true, runValidators: true }
-        );
-        results.push({ date, success: true });
-      } catch (err: any) {
-        console.error(`matchApply: failed for ${date}:`, err);
-        results.push({ date, success: false, message: 'Failed to apply' });
+            { upsert: true, new: true, runValidators: true, session }
+          );
+          results.push({ date, success: true });
+        } catch (err: any) {
+          console.error('matchApply: entry write failed', { date, error: err.message });
+          results.push({ date, success: false, message: 'Failed to apply' });
+        }
       }
-    }
 
-    res.json({
-      success: true,
-      data: {
-        processed: results.filter((r) => r.success).length,
-        skipped: results.filter((r) => !r.success).length,
-        results,
-      },
-    });
+      const overallSuccess = results.some((r) => r.success);
+
+      if (overallSuccess) {
+        await session.commitTransaction();
+      } else {
+        await session.abortTransaction();
+      }
+
+      res.json({
+        success: overallSuccess,
+        data: {
+          processed: results.filter((r) => r.success).length,
+          skipped: results.filter((r) => !r.success).length,
+          results,
+        },
+      });
+    } catch (txErr: any) {
+      await session.abortTransaction();
+      throw txErr;
+    } finally {
+      session.endSession();
+    }
   } catch (error: any) {
-    console.error('matchApply error:', error);
+    console.error('matchApply error:', { message: (error as Error).message, stack: (error as Error).stack });
     res.status(500).json({ success: false, message: 'Failed to apply schedule alignment' });
   }
 };

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { scheduleApi } from '../api';
-import type { MatchPreviewDate, MatchPreviewResponse, FavoriteNotification } from '../types';
+import type { MatchPreviewResponse, FavoriteNotification } from '../types';
 import { getShortDayName, getDayNumber } from '../utils/date';
 import toast from 'react-hot-toast';
 
@@ -35,18 +35,6 @@ const CLASSIFICATION_CONFIG: Record<string, { label: string; badge: string; badg
     badgeColor: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
     icon: '⏭️',
   },
-  holiday: {
-    label: 'Holiday',
-    badge: 'Holiday',
-    badgeColor: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
-    icon: '🎉',
-  },
-  weekend: {
-    label: 'Weekend',
-    badge: 'Weekend',
-    badgeColor: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
-    icon: '📅',
-  },
 };
 
 const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
@@ -61,12 +49,27 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
   const [overrideLeave, setOverrideLeave] = useState(false);
   const [staleWarning, setStaleWarning] = useState(false);
 
-  const sourceUserId = typeof notification.sourceUserId === 'object'
-    ? notification.sourceUserId._id
-    : notification.sourceUserId;
+  const mountedRef = useRef(true);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  const sourceName = typeof notification.sourceUserId === 'object'
-    ? notification.sourceUserId.name
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    // Focus the modal container on mount
+    modalRef.current?.focus();
+    return () => {
+      mountedRef.current = false;
+      // Restore focus on unmount
+      previousFocusRef.current?.focus();
+    };
+  }, []);
+
+  const sourceUserId = typeof notification.sourceUser === 'object'
+    ? notification.sourceUser._id
+    : notification.sourceUser;
+
+  const sourceName = typeof notification.sourceUser === 'object'
+    ? notification.sourceUser.name
     : 'User';
 
   const fetchPreview = useCallback(async () => {
@@ -75,13 +78,14 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
     try {
       const dates = notification.affectedDates;
       if (dates.length === 0) {
-        setPreview(null);
+        if (mountedRef.current) setPreview(null);
         return;
       }
       const startDate = dates.reduce((a, b) => (a < b ? a : b));
       const endDate = dates.reduce((a, b) => (a > b ? a : b));
 
       const res = await scheduleApi.matchPreview(sourceUserId, startDate, endDate);
+      if (!mountedRef.current) return;
       if (res.data.success && res.data.data) {
         setPreview(res.data.data);
         // Auto-select "will_be_added" dates
@@ -92,15 +96,18 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
           }
         });
         setSelectedDates(autoSelect);
+      } else if (res.data.success && !res.data.data) {
+        setPreview(null);
       }
     } catch (err: any) {
+      if (!mountedRef.current) return;
       if (err.response?.status === 409) {
         setStaleWarning(true);
       } else {
         toast.error('Failed to load schedule preview');
       }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [notification.affectedDates, sourceUserId]);
 
@@ -130,6 +137,7 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
         Array.from(selectedDates),
         overrideLeave,
       );
+      if (!mountedRef.current) return;
       if (res.data.success && res.data.data) {
         const { processed, skipped } = res.data.data;
         if (processed > 0) {
@@ -138,8 +146,11 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
         } else {
           toast.error('No changes could be applied');
         }
+      } else if (res.data.success && !res.data.data) {
+        toast.error('No changes could be applied');
       }
     } catch (err: any) {
+      if (!mountedRef.current) return;
       if (err.response?.status === 409) {
         setStaleWarning(true);
         toast.error('Schedule has changed. Please review again.');
@@ -147,24 +158,36 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
         toast.error(err.response?.data?.message || 'Failed to apply alignment');
       }
     } finally {
-      setApplying(false);
+      if (mountedRef.current) setApplying(false);
     }
   };
-
-  const canSelect = (d: MatchPreviewDate) =>
-    d.classification === 'will_be_added' ||
-    (d.classification === 'conflict_leave' && overrideLeave);
 
   const addableDates = preview?.preview.filter((d) => d.classification === 'will_be_added') || [];
   const conflictDates = preview?.preview.filter((d) => d.classification === 'conflict_leave') || [];
   const lockedDates = preview?.preview.filter((d) => d.classification === 'locked') || [];
   const matchingDates = preview?.preview.filter((d) => d.classification === 'already_matching') || [];
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && !applying) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="responsive-modal-backdrop" onClick={onClose}>
+    <div
+      className="responsive-modal-backdrop"
+      onClick={() => { if (!applying) onClose(); }}
+      role="presentation"
+    >
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Align Schedule"
+        tabIndex={-1}
         className="responsive-modal p-0 max-w-lg"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -179,8 +202,9 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
         {/* Content */}
         <div className="px-5 py-4 max-h-[60vh] overflow-y-auto space-y-4">
           {loading && (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-12" role="status">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+              <span className="sr-only">Loading schedule preview…</span>
             </div>
           )}
 
@@ -363,7 +387,8 @@ const AlignScheduleModal: React.FC<AlignScheduleModalProps> = ({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              disabled={applying}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>

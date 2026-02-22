@@ -263,6 +263,20 @@ export interface WorkbotApplyResult {
 }
 
 // ─── Events (Admin Event Tagging) ────────────
+export type RsvpStatus = 'going' | 'not_going' | 'maybe';
+
+export interface EventRsvp {
+  userId: Pick<User, '_id' | 'name' | 'email'>;
+  status: RsvpStatus;
+  respondedAt: string;
+}
+
+export interface RsvpCounts {
+  going: number;
+  maybe: number;
+  not_going: number;
+}
+
 export interface CalendarEvent {
   _id: string;
   date: string;
@@ -270,6 +284,9 @@ export interface CalendarEvent {
   description?: string;
   eventType?: string;
   createdBy: Pick<User, '_id' | 'name' | 'email'>;
+  rsvps?: EventRsvp[];
+  rsvpCounts?: RsvpCounts;
+  myRsvpStatus?: RsvpStatus | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -319,17 +336,14 @@ export interface MyInsightsResponse {
 }
 
 // ─── Favorites & Notifications ───────────────
-export interface FavoriteUser {
-  _id: string;
-  name: string;
-  email: string;
-}
+export type FavoriteUser = Pick<User, '_id' | 'name' | 'email'>;
 
 export interface FavoriteNotification {
   _id: string;
   userId: string;
-  type: 'favorite_schedule_update';
-  sourceUserId: FavoriteUser;
+  type: 'favorite_schedule_update' | 'event_created' | 'event_updated';
+  sourceUser: FavoriteUser;
+  eventId?: string;
   affectedDates: string[];
   message: string;
   isRead: boolean;
@@ -348,8 +362,8 @@ export type MatchDateClassification =
 export interface MatchPreviewDate {
   date: string;
   classification: MatchDateClassification;
-  favoriteStatus: string;
-  userStatus: string;
+  favoriteStatus: EffectiveStatus;
+  userStatus: EffectiveStatus;
   canOverride: boolean;
   reason?: string;
 }
@@ -360,8 +374,4 @@ export interface MatchPreviewResponse {
   lastUpdated: string | null;
 }
 
-export interface MatchApplyResult {
-  processed: number;
-  skipped: number;
-  results: BulkResultItem[];
-}
+export type MatchApplyResult = BulkResult;

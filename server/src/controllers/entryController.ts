@@ -172,11 +172,8 @@ export const upsertEntry = async (
 
     // Create favorite notifications for office days
     if (status === 'office') {
-      try {
-        createFavoriteNotifications(userId.toString(), req.user!.name, [date]);
-      } catch (favErr) {
-        console.error('createFavoriteNotifications error:', favErr);
-      }
+      createFavoriteNotifications(userId.toString(), req.user!.name, [date])
+        .catch((favErr) => console.error('createFavoriteNotifications error:', favErr));
     }
 
     res.json({ success: true, data: entry });
@@ -260,6 +257,12 @@ export const adminUpsertEntry = async (
       updateOp,
       { upsert: true, new: true, runValidators: true }
     );
+
+    // Create favorite notifications for office days
+    if (status === 'office') {
+      createFavoriteNotifications(userId.toString(), req.user!.name, [date])
+        .catch((favErr) => console.error('createFavoriteNotifications error:', favErr));
+    }
 
     res.json({ success: true, data: entry });
   } catch (error: any) {
@@ -545,11 +548,8 @@ export const bulkSetEntries = async (
     if (status === 'office') {
       const successDates = results.filter((r) => r.success).map((r) => r.date);
       if (successDates.length > 0) {
-        try {
-          createFavoriteNotifications(userId.toString(), req.user!.name, successDates);
-        } catch (favErr) {
-          console.error('createFavoriteNotifications error:', favErr);
-        }
+        createFavoriteNotifications(userId.toString(), req.user!.name, successDates)
+          .catch((favErr) => console.error('createFavoriteNotifications error:', favErr));
       }
     }
 
@@ -643,6 +643,15 @@ export const copyFromDate = async (
 
     const skipped = targetDates.filter((d: string) => !allowedTargets.includes(d));
     skipped.forEach((d: string) => results.push({ date: d, success: false, message: 'Outside allowed range' }));
+
+    // Create favorite notifications for copied office days
+    if (sourceEntry?.status === 'office') {
+      const successDates = results.filter((r) => r.success).map((r) => r.date);
+      if (successDates.length > 0) {
+        createFavoriteNotifications(userId.toString(), req.user!.name, successDates)
+          .catch((favErr) => console.error('createFavoriteNotifications error:', favErr));
+      }
+    }
 
     res.json({
       success: true,
@@ -753,6 +762,15 @@ export const repeatPattern = async (
       } catch (err: any) {
         console.error(`repeatPattern: failed for date ${date}:`, err);
         results.push({ date, success: false, message: 'Failed to process entry' });
+      }
+    }
+
+    // Create favorite notifications for repeated office days
+    if (status === 'office') {
+      const successDates = results.filter((r) => r.success).map((r) => r.date);
+      if (successDates.length > 0) {
+        createFavoriteNotifications(userId.toString(), req.user!.name, successDates)
+          .catch((favErr) => console.error('createFavoriteNotifications error:', favErr));
       }
     }
 
@@ -878,6 +896,20 @@ export const copyRange = async (
       }
 
       current.setDate(current.getDate() + 1);
+    }
+
+    // Create favorite notifications for copied office days
+    {
+      const officeDates = results.filter((r) => r.success && !r.message?.includes('cleared')).map((r) => r.date);
+      // Check which target dates ended up as office entries
+      if (officeDates.length > 0) {
+        const officeEntries = await Entry.find({ userId, date: { $in: officeDates }, status: 'office' }).select('date').lean();
+        const officeSuccessDates = officeEntries.map((e: any) => e.date as string);
+        if (officeSuccessDates.length > 0) {
+          createFavoriteNotifications(userId.toString(), req.user!.name, officeSuccessDates)
+            .catch((favErr) => console.error('createFavoriteNotifications error:', favErr));
+        }
+      }
     }
 
     res.json({

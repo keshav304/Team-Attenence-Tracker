@@ -130,7 +130,7 @@ const TeamCalendarPage: React.FC = () => {
 
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'team' | 'favorites'>('team');
-  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [togglingFavoriteIds, setTogglingFavoriteIds] = useState<Set<string>>(new Set());
 
   const days = useMemo(() => getDaysInMonth(month), [month]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -240,7 +240,9 @@ const TeamCalendarPage: React.FC = () => {
           setFavorites(new Set(res.data.data.map((f: FavoriteUser) => f._id)));
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        toast.error('Failed to load favorites');
+      });
   }, []);
 
   useEffect(() => {
@@ -377,7 +379,7 @@ const TeamCalendarPage: React.FC = () => {
 
   const handleToggleFavorite = async (memberId: string) => {
     if (memberId === user?._id) return; // Can't favorite yourself
-    setFavoritesLoading(true);
+    setTogglingFavoriteIds((prev) => new Set(prev).add(memberId));
     try {
       const res = await favoritesApi.toggleFavorite(memberId);
       if (res.data.success && res.data.data) {
@@ -386,7 +388,11 @@ const TeamCalendarPage: React.FC = () => {
     } catch {
       toast.error('Failed to update favorite');
     } finally {
-      setFavoritesLoading(false);
+      setTogglingFavoriteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(memberId);
+        return next;
+      });
     }
   };
 
@@ -698,7 +704,7 @@ const TeamCalendarPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); handleToggleFavorite(member.user._id); }}
-                              disabled={favoritesLoading}
+                              disabled={togglingFavoriteIds.has(member.user._id)}
                               className={`shrink-0 p-0.5 rounded transition-colors ${
                                 favorites.has(member.user._id)
                                   ? 'text-amber-400 hover:text-amber-500'

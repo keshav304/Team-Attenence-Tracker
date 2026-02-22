@@ -45,15 +45,39 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       default: true,
     },
-    favorites: [{
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-    }],
+    favorites: {
+      type: [{
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+      }],
+      default: [],
+    },
   },
   {
     timestamps: true,
   }
 );
+
+// Validate favorites: no duplicates, no self-referencing
+userSchema.pre('validate', function (next) {
+  if (this.favorites && this.favorites.length > 0) {
+    const selfId = this._id?.toString();
+    const seen = new Set<string>();
+    const deduped: mongoose.Types.ObjectId[] = [];
+    for (const fav of this.favorites) {
+      const favStr = fav.toString();
+      if (favStr === selfId) {
+        return next(new Error('Cannot add yourself as a favorite'));
+      }
+      if (!seen.has(favStr)) {
+        seen.add(favStr);
+        deduped.push(fav);
+      }
+    }
+    this.favorites = deduped;
+  }
+  next();
+});
 
 // Hash password before saving
 userSchema.pre('save', async function (next) {

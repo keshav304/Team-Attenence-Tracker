@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { AuthRequest } from '../types/index.js';
 
+/** Default and maximum page size for favorites listing. */
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+
 /**
  * Toggle a user as favorite.
  * POST /api/users/favorites/:userId
@@ -13,7 +17,7 @@ export const toggleFavorite = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { userId } = req.params;
+    const { targetUserId: userId } = req.params;
     const currentUserId = req.user!._id;
 
     // Cannot favorite self
@@ -35,36 +39,52 @@ export const toggleFavorite = async (
       return;
     }
 
-    const currentUser = await User.findById(currentUserId);
-    if (!currentUser) {
-      res.status(404).json({ success: false, message: 'Current user not found' });
-      return;
-    }
-
     const targetObjId = new mongoose.Types.ObjectId(userId);
-    const isFavorited = currentUser.favorites.some(
-      (fav) => fav.toString() === userId
+
+    // Try to remove first (atomic pull)
+    const pullResult = await User.findOneAndUpdate(
+      { _id: currentUserId, favorites: targetObjId },
+      { $pull: { favorites: targetObjId } },
+      { new: true }
     );
 
-    if (isFavorited) {
-      // Remove from favorites
-      currentUser.favorites = currentUser.favorites.filter(
-        (fav) => fav.toString() !== userId
-      );
+    if (pullResult) {
+      // Was present and removed — populate for a fresh response
+      const populated = await User.findById(currentUserId)
+        .select('favorites')
+        .populate('favorites', '_id name email');
+      res.json({
+        success: true,
+        data: {
+          favorites: populated?.favorites ?? pullResult.favorites,
+          action: 'removed',
+        },
+      });
     } else {
-      // Add to favorites
-      currentUser.favorites.push(targetObjId);
+      // Was not present — add atomically (prevents duplicates)
+      const addResult = await User.findByIdAndUpdate(
+        currentUserId,
+        { $addToSet: { favorites: targetObjId } },
+        { new: true }
+      );
+
+      if (!addResult) {
+        res.status(404).json({ success: false, message: 'Current user not found' });
+        return;
+      }
+
+      // Populate for a fresh response
+      const populated = await User.findById(currentUserId)
+        .select('favorites')
+        .populate('favorites', '_id name email');
+      res.json({
+        success: true,
+        data: {
+          favorites: populated?.favorites ?? addResult.favorites,
+          action: 'added',
+        },
+      });
     }
-
-    await currentUser.save();
-
-    res.json({
-      success: true,
-      data: {
-        favorites: currentUser.favorites,
-        action: isFavorited ? 'removed' : 'added',
-      },
-    });
   } catch (error: any) {
     console.error('toggleFavorite error:', error);
     res.status(500).json({ success: false, message: 'Failed to toggle favorite' });
@@ -80,19 +100,36 @@ export const getFavorites = async (
   res: Response
 ): Promise<void> => {
   try {
-    const currentUser = await User.findById(req.user!._id).populate(
-      'favorites',
-      '_id name email'
-    );
+    // Pagination params
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(req.query.limit as string, 10) || DEFAULT_LIMIT));
+
+    const currentUser = await User.findById(req.user!._id).select('favorites');
 
     if (!currentUser) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
     }
 
+    const totalFavorites = currentUser.favorites.length;
+    const start = (page - 1) * limit;
+    const paginatedIds = currentUser.favorites.slice(start, start + limit);
+
+    // Populate only active users, selecting minimal fields
+    const populatedFavorites = await User.find(
+      { _id: { $in: paginatedIds }, isActive: true },
+      '_id name email'
+    ).lean();
+
     res.json({
       success: true,
-      data: currentUser.favorites,
+      data: populatedFavorites,
+      pagination: {
+        page,
+        limit,
+        total: totalFavorites,
+        totalPages: Math.ceil(totalFavorites / limit),
+      },
     });
   } catch (error: any) {
     console.error('getFavorites error:', error);

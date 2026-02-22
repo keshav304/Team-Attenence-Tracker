@@ -10,6 +10,6 @@ router.use(authenticate);
 router.get('/favorites', getFavorites);
 
 // Toggle favorite
-router.post('/favorites/:userId', toggleFavorite);
+router.post('/favorites/:targetUserId', toggleFavorite);
 
 export default router;
