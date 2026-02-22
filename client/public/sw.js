@@ -62,7 +62,18 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => cached); // Fallback to cache if offline
+        .catch(async () => {
+          // Fallback to cache if offline
+          if (cached) return cached;
+          // Try a cached offline fallback, or return a 503 response
+          const offlinePage = await cache.match('/');
+          if (offlinePage) return offlinePage;
+          return new Response('Service Unavailable', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        });
 
       return cached || networkFetch;
     })
@@ -111,9 +122,12 @@ self.addEventListener('notificationclick', (event) => {
       // If an existing window is open, focus it and navigate
       for (const client of clients) {
         if (new URL(client.url).origin === self.location.origin) {
-          client.focus();
-          client.navigate(targetUrl);
-          return;
+          return client.focus().then((focusedClient) => {
+            if (focusedClient && 'navigate' in focusedClient) {
+              return focusedClient.navigate(targetUrl);
+            }
+            return focusedClient;
+          });
         }
       }
       // Otherwise open a new window

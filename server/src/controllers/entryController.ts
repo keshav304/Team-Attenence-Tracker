@@ -156,13 +156,18 @@ export const upsertEntry = async (
       { upsert: true, new: true, runValidators: true }
     );
 
-    // Fire push notification to teammates if the change is for today
-    notifyTeamStatusChange(
-      req.user!.name,
-      userId.toString(),
-      date,
-      status
-    );
+    // Fire push notification to teammates (notifyTeamStatusChange internally
+    // checks whether `date` is today and exits early if not)
+    try {
+      notifyTeamStatusChange(
+        req.user!.name,
+        userId.toString(),
+        date,
+        status
+      );
+    } catch (pushErr) {
+      console.error('notifyTeamStatusChange error:', pushErr);
+    }
 
     res.json({ success: true, data: entry });
   } catch (error: any) {

@@ -220,8 +220,16 @@ export const myInsightsApi = {
 };
 
 // ─── Push Notifications ──────────────────────
+
+/** Shared shape for push-notification preferences across subscribe / getStatus / updatePreferences. */
+export interface PushPreferences {
+  teamStatusChanges?: boolean;
+  weeklyReminder?: boolean;
+  adminAnnouncements?: boolean;
+}
+
 export const pushApi = {
-  subscribe: (endpoint: string, keys: { p256dh: string; auth: string }, preferences?: Record<string, boolean>) =>
+  subscribe: (endpoint: string, keys: { p256dh: string; auth: string }, preferences?: PushPreferences) =>
     api.post<ApiResponse>('/push/subscribe', { endpoint, keys, preferences }),
 
   unsubscribe: (endpoint: string) =>
@@ -231,13 +239,9 @@ export const pushApi = {
     api.get<ApiResponse<{
       subscribed: boolean;
       subscriptionCount: number;
-      preferences: {
-        teamStatusChanges: boolean;
-        weeklyReminder: boolean;
-        adminAnnouncements: boolean;
-      };
+      preferences: PushPreferences;
     }>>('/push/status'),
 
-  updatePreferences: (preferences: Record<string, boolean>) =>
+  updatePreferences: (preferences: PushPreferences) =>
     api.put<ApiResponse>('/push/preferences', { preferences }),
 };

@@ -81,12 +81,16 @@ export const createEvent = async (
 
     const populated = await Event.findById(event._id).populate('createdBy', 'name email');
 
-    // Push notification to all subscribers
-    notifyAdminAnnouncement(
-      '📌 New Event',
-      `${title} on ${date}`,
-      '/'
-    );
+    // Push notification to all subscribers (fire-and-forget; errors handled internally)
+    try {
+      notifyAdminAnnouncement(
+        '📌 New Event',
+        `${title} on ${date}`,
+        '/'
+      );
+    } catch (pushErr) {
+      console.error(`notifyAdminAnnouncement failed for event "${title}":`, pushErr);
+    }
 
     res.status(201).json({ success: true, data: populated });
   } catch (error: any) {

@@ -3,12 +3,20 @@ import config from '../config/index.js';
 import PushSubscription, { IPushSubscription } from '../models/PushSubscription.js';
 
 /* ── Initialise web-push with VAPID keys ──────── */
-if (config.vapidPublicKey && config.vapidPrivateKey) {
+if (
+  config.vapidPublicKey &&
+  config.vapidPrivateKey &&
+  config.vapidSubject &&
+  typeof config.vapidSubject === 'string' &&
+  config.vapidSubject.length > 0
+) {
   webPush.setVapidDetails(
     config.vapidSubject,
     config.vapidPublicKey,
     config.vapidPrivateKey
   );
+} else if (config.vapidPublicKey && config.vapidPrivateKey) {
+  console.warn('[Push] vapidSubject is missing or empty — skipping VAPID initialisation.');
 }
 
 /** Payload shape expected by our service worker */
@@ -61,18 +69,23 @@ export async function notifyUser(
   payload: PushPayload
 ): Promise<number> {
   const subs = await PushSubscription.find({ userId });
-  let sent = 0;
-  for (const sub of subs) {
-    if (await sendToSubscription(sub, payload)) sent++;
-  }
-  return sent;
+  const results = await Promise.all(
+    subs.map((sub) => sendToSubscription(sub, payload))
+  );
+  return results.filter(Boolean).length;
 }
 
 /**
  * Notify all subscribers who have a specific preference enabled,
  * optionally excluding a particular user (e.g. the actor who triggered
  * the event).
+ *
+ * Sends are dispatched in parallel with a concurrency limit to avoid
+ * overwhelming the push service while still being significantly faster
+ * than a fully sequential loop.
  */
+const PUSH_CONCURRENCY = 10;
+
 export async function notifyAllWithPreference(
   preferenceKey: keyof IPushSubscription['preferences'],
   payload: PushPayload,
@@ -85,9 +98,20 @@ export async function notifyAllWithPreference(
     filter.userId = { $ne: excludeUserId };
   }
   const subs = await PushSubscription.find(filter);
+
   let sent = 0;
-  for (const sub of subs) {
-    if (await sendToSubscription(sub, payload)) sent++;
+  // Process in batches of PUSH_CONCURRENCY
+  for (let i = 0; i < subs.length; i += PUSH_CONCURRENCY) {
+    const batch = subs.slice(i, i + PUSH_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((sub) => sendToSubscription(sub, payload))
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) sent++;
+      if (r.status === 'rejected') {
+        console.error('[Push] Unexpected sendToSubscription rejection:', r.reason);
+      }
+    }
   }
   return sent;
 }
@@ -102,7 +126,11 @@ export function notifyTeamStatusChange(
   date: string,
   newStatus: string
 ): void {
-  const isToday = date === new Date().toISOString().slice(0, 10);
+  // Compare using UTC date components to avoid timezone-related mismatches.
+  // The `date` parameter is expected to be an ISO date string (YYYY-MM-DD) in UTC.
+  const now = new Date();
+  const todayUTC = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+  const isToday = date === todayUTC;
   if (!isToday) return; // Only send push for today's changes
 
   const payload: PushPayload = {

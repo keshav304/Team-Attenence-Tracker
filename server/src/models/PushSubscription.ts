@@ -46,8 +46,8 @@ const pushSubscriptionSchema = new Schema<IPushSubscription>(
   { timestamps: true }
 );
 
-// Compound index: one endpoint per user
-pushSubscriptionSchema.index({ userId: 1, endpoint: 1 }, { unique: true });
+// Compound index for lookups by userId + endpoint (uniqueness already enforced by endpoint's own unique index)
+pushSubscriptionSchema.index({ userId: 1, endpoint: 1 });
 
 const PushSubscription = mongoose.model<IPushSubscription>(
   'PushSubscription',

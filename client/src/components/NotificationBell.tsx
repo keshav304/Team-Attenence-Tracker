@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { pushApi } from '../api';
+import { pushApi, type PushPreferences } from '../api';
 import {
   isPushSupported,
   getNotificationPermission,
@@ -12,11 +12,8 @@ import {
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
 /* ------------------------------------------------------------------ */
-interface NotificationPreferences {
-  teamStatusChanges: boolean;
-  weeklyReminder: boolean;
-  adminAnnouncements: boolean;
-}
+/** Local required version — all keys are set in component state. */
+interface NotificationPreferences extends Required<PushPreferences> {}
 
 type PreferenceKey = keyof NotificationPreferences;
 
@@ -61,7 +58,11 @@ const NotificationBell: React.FC = () => {
         const d = res.data.data;
         if (d) {
           setSubscribed(d.subscribed);
-          setPreferences(d.preferences);
+          setPreferences({
+            teamStatusChanges: d.preferences.teamStatusChanges ?? true,
+            weeklyReminder: d.preferences.weeklyReminder ?? true,
+            adminAnnouncements: d.preferences.adminAnnouncements ?? true,
+          });
         }
       })
       .catch(() => {});
@@ -104,10 +105,19 @@ const NotificationBell: React.FC = () => {
           return;
         }
         const subJson = subscription.toJSON();
+        const endpoint = subJson.endpoint;
+        const p256dh = subJson.keys?.p256dh;
+        const auth = subJson.keys?.auth;
+        if (!endpoint || typeof endpoint !== 'string' || !p256dh || typeof p256dh !== 'string' || !auth || typeof auth !== 'string') {
+          console.error('[NotificationBell] Invalid subscription JSON:', subJson);
+          toast.error('Invalid push subscription data.');
+          return;
+        }
+        const keys: { p256dh: string; auth: string } = { p256dh, auth };
         await pushApi.subscribe(
-          subJson.endpoint!,
-          subJson.keys as { p256dh: string; auth: string },
-          { ...preferences } as Record<string, boolean>
+          endpoint,
+          keys,
+          { ...preferences },
         );
         setSubscribed(true);
         setPermission('granted');
@@ -124,18 +134,27 @@ const NotificationBell: React.FC = () => {
   /* ── Update preference ── */
   const handlePrefChange = useCallback(
     async (key: PreferenceKey, value: boolean) => {
-      const newPrefs = { ...preferences, [key]: value };
-      setPreferences(newPrefs);
+      const prevValueHolder: { v: boolean | undefined } = { v: undefined };
+      setPreferences((prev) => {
+        prevValueHolder.v = prev[key];
+        return { ...prev, [key]: value };
+      });
       if (subscribed) {
         try {
-          await pushApi.updatePreferences(newPrefs);
+          // Read the latest preferences for the API call
+          let latestPrefs: NotificationPreferences | undefined;
+          setPreferences((prev) => {
+            latestPrefs = prev;
+            return prev;
+          });
+          await pushApi.updatePreferences({ ...latestPrefs! });
         } catch {
           toast.error('Failed to update preferences');
-          setPreferences(preferences); // revert
+          setPreferences((prev) => ({ ...prev, [key]: prevValueHolder.v as boolean }));
         }
       }
     },
-    [subscribed, preferences]
+    [subscribed]
   );
 
   if (!supported) return null;

@@ -59,13 +59,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-/** Check whether push notifications are supported AND the user has granted permission. */
+/** Check whether the browser supports push notification APIs (service worker, PushManager, Notification). Does NOT check Notification.permission. */
 export function isPushSupported(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
-/** Current notification permission state. */
+/** Current notification permission state. Returns 'default' if Notification API is unavailable. */
 export function getNotificationPermission(): NotificationPermission {
+  if (typeof Notification === 'undefined') return 'default';
   return Notification.permission;
 }
 
@@ -113,6 +114,7 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
  * Returns `true` if successful.
  */
 export async function unsubscribeFromPush(): Promise<boolean> {
+  if (!isPushSupported()) return false;
   try {
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
