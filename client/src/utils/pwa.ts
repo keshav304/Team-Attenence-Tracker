@@ -105,7 +105,9 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
     return subscription;
   } catch (error) {
     console.error('[PWA] Failed to subscribe to push:', error);
-    return null;
+    // Re-throw push service errors so callers can show browser-specific messages
+    // (e.g. Brave blocks Google FCM by default)
+    throw error;
   }
 }
 
