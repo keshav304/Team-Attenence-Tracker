@@ -9,12 +9,18 @@ export interface User {
 }
 
 export type StatusType = 'office' | 'leave';
+export type LeaveDuration = 'full' | 'half';
+export type HalfDayPortion = 'first-half' | 'second-half';
+export type WorkingPortion = 'wfh' | 'office';
 
 export interface Entry {
   _id: string;
   userId: string;
   date: string;
   status: StatusType;
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
   note?: string;
   startTime?: string; // HH:mm 24h IST
   endTime?: string;   // HH:mm 24h IST
@@ -31,6 +37,9 @@ export type EffectiveStatus = 'office' | 'leave' | 'wfh' | 'holiday';
 
 export interface EntryDetail {
   status: StatusType;
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
   note?: string;
   startTime?: string;
   endTime?: string;
@@ -66,6 +75,9 @@ export interface Template {
   userId: string;
   name: string;
   status: StatusType;
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
   startTime?: string;
   endTime?: string;
   note?: string;
@@ -94,6 +106,7 @@ export interface DaySummary {
   office: number;
   leave: number;
   wfh: number;
+  halfDayLeave: number;
   total: number;
 }
 
@@ -145,7 +158,10 @@ export interface UserDayBreakdown {
   isHoliday: boolean;
   holidayName?: string;
   isBeforeJoin: boolean;
-  status: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined';
+  status: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined' | 'half-day-leave';
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
   startTime?: string;
   endTime?: string;
   note?: string;
@@ -214,6 +230,9 @@ export interface WorkbotResolvedChange {
   date: string;
   day: string;
   status: WorkbotStatus;
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
   note?: string;
   valid: boolean;
   validationMessage?: string;
@@ -230,6 +249,9 @@ export interface WorkbotResolveResponse {
 export interface WorkbotApplyItem {
   date: string;
   status: WorkbotStatus;
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
   note?: string;
 }
 

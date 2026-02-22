@@ -27,6 +27,9 @@ const buildUpdateOp = (
   updateData: Record<string, unknown>,
   startTime: string | null | undefined,
   note: string | null | undefined,
+  leaveDuration?: string | null,
+  halfDayPortion?: string | null,
+  workingPortion?: string | null,
 ): Record<string, unknown> => {
   const unsetFields: Record<string, 1> = {};
   if (startTime === '' || startTime === null) {
@@ -38,6 +41,25 @@ const buildUpdateOp = (
   if (note === '' || note === null) {
     unsetFields.note = 1;
     delete updateData.note;
+  }
+  // Handle half-day leave fields
+  if (!leaveDuration || leaveDuration !== 'half') {
+    unsetFields.leaveDuration = 1;
+    unsetFields.halfDayPortion = 1;
+    unsetFields.workingPortion = 1;
+    delete updateData.leaveDuration;
+    delete updateData.halfDayPortion;
+    delete updateData.workingPortion;
+  } else {
+    // leaveDuration === 'half'
+    if (!halfDayPortion) {
+      unsetFields.halfDayPortion = 1;
+      delete updateData.halfDayPortion;
+    }
+    if (!workingPortion) {
+      // Default working portion to 'wfh'
+      updateData.workingPortion = 'wfh';
+    }
   }
   const op: Record<string, unknown> = { $set: updateData };
   if (Object.keys(unsetFields).length) op.$unset = unsetFields;
@@ -69,7 +91,7 @@ export const upsertEntry = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { date, status, note, startTime, endTime } = req.body;
+    const { date, status, note, startTime, endTime, leaveDuration, halfDayPortion, workingPortion } = req.body;
     const userId = req.user!._id;
     const isAdmin = req.user!.role === 'admin';
 
@@ -117,12 +139,15 @@ export const upsertEntry = async (
       userId,
       date,
       status,
+      leaveDuration: (status === 'leave' && leaveDuration) ? leaveDuration : undefined,
+      halfDayPortion: (status === 'leave' && leaveDuration === 'half' && halfDayPortion) ? halfDayPortion : undefined,
+      workingPortion: (status === 'leave' && leaveDuration === 'half') ? (workingPortion || 'wfh') : undefined,
       note: note ? sanitizeText(note) : undefined,
       startTime: startTime || undefined,
       endTime: endTime || undefined,
     };
 
-    const updateOp = buildUpdateOp(updateData, startTime, note);
+    const updateOp = buildUpdateOp(updateData, startTime, note, leaveDuration, halfDayPortion, workingPortion);
 
     const entry = await Entry.findOneAndUpdate(
       { userId, date },
@@ -144,14 +169,14 @@ export const upsertEntry = async (
 /**
  * Admin sets/updates entry for another user.
  * PUT /api/entries/admin
- * Body: { userId, date, status, note?, startTime?, endTime? }
+ * Body: { userId, date, status, note?, startTime?, endTime?, leaveDuration?, halfDayPortion?, workingPortion? }
  */
 export const adminUpsertEntry = async (
   req: AuthRequest,
   res: Response
 ): Promise<void> => {
   try {
-    const { userId, date, status, note, startTime, endTime } = req.body;
+    const { userId, date, status, note, startTime, endTime, leaveDuration, halfDayPortion, workingPortion } = req.body;
 
     if (!['office', 'leave'].includes(status)) {
       res.status(400).json({
@@ -196,12 +221,15 @@ export const adminUpsertEntry = async (
       userId,
       date,
       status,
+      leaveDuration: (status === 'leave' && leaveDuration) ? leaveDuration : undefined,
+      halfDayPortion: (status === 'leave' && leaveDuration === 'half' && halfDayPortion) ? halfDayPortion : undefined,
+      workingPortion: (status === 'leave' && leaveDuration === 'half') ? (workingPortion || 'wfh') : undefined,
       note: note ? sanitizeText(note) : undefined,
       startTime: startTime || undefined,
       endTime: endTime || undefined,
     };
 
-    const updateOp = buildUpdateOp(updateData, startTime, note);
+    const updateOp = buildUpdateOp(updateData, startTime, note, leaveDuration, halfDayPortion, workingPortion);
 
     const entry = await Entry.findOneAndUpdate(
       { userId, date },
@@ -346,8 +374,8 @@ export const getTeamEntries = async (
       userId: { $in: users.map((u: any) => u._id) },
     });
 
-    // Build a lookup: { [userId]: { [date]: { status, note?, startTime?, endTime? } } }
-    const entryMap: Record<string, Record<string, { status: string; note?: string; startTime?: string; endTime?: string }>> = {};
+    // Build a lookup: { [userId]: { [date]: { status, note?, startTime?, endTime?, leaveDuration?, halfDayPortion?, workingPortion? } } }
+    const entryMap: Record<string, Record<string, { status: string; note?: string; startTime?: string; endTime?: string; leaveDuration?: string; halfDayPortion?: string; workingPortion?: string }>> = {};
     entries.forEach((e: any) => {
       const uid = e.userId.toString();
       if (!entryMap[uid]) entryMap[uid] = {};
@@ -356,6 +384,9 @@ export const getTeamEntries = async (
         ...(e.note ? { note: e.note } : {}),
         ...(e.startTime ? { startTime: e.startTime } : {}),
         ...(e.endTime ? { endTime: e.endTime } : {}),
+        ...(e.leaveDuration ? { leaveDuration: e.leaveDuration } : {}),
+        ...(e.halfDayPortion ? { halfDayPortion: e.halfDayPortion } : {}),
+        ...(e.workingPortion ? { workingPortion: e.workingPortion } : {}),
       };
     });
 
@@ -404,7 +435,7 @@ export const bulkSetEntries = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { dates, status, note, startTime, endTime } = req.body;
+    const { dates, status, note, startTime, endTime, leaveDuration, halfDayPortion, workingPortion } = req.body;
     const userId = req.user!._id;
     const isAdmin = req.user!.role === 'admin';
 
@@ -441,24 +472,15 @@ export const bulkSetEntries = async (
           userId,
           date,
           status,
+          leaveDuration: (status === 'leave' && leaveDuration) ? leaveDuration : undefined,
+          halfDayPortion: (status === 'leave' && leaveDuration === 'half' && halfDayPortion) ? halfDayPortion : undefined,
+          workingPortion: (status === 'leave' && leaveDuration === 'half') ? (workingPortion || 'wfh') : undefined,
           note: note ? sanitizeText(note) : undefined,
           startTime: startTime || undefined,
           endTime: endTime || undefined,
         };
-        const unsetFields: Record<string, 1> = {};
-        if (!startTime) {
-          unsetFields.startTime = 1;
-          unsetFields.endTime = 1;
-          delete updateData.startTime;
-          delete updateData.endTime;
-        }
-        if (!note) {
-          unsetFields.note = 1;
-          delete updateData.note;
-        }
 
-        const update: Record<string, unknown> = { $set: updateData };
-        if (Object.keys(unsetFields).length) update.$unset = unsetFields;
+        const update = buildUpdateOp(updateData, startTime, note, leaveDuration, halfDayPortion, workingPortion);
 
         return {
           updateOne: {
@@ -556,13 +578,19 @@ export const copyFromDate = async (
             note: sourceEntry.note || undefined,
             startTime: sourceEntry.startTime || undefined,
             endTime: sourceEntry.endTime || undefined,
+            leaveDuration: sourceEntry.leaveDuration || undefined,
+            halfDayPortion: sourceEntry.halfDayPortion || undefined,
+            workingPortion: sourceEntry.workingPortion || undefined,
           };
-          const unsetFields: Record<string, 1> = {};
-          if (!sourceEntry.startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
-          if (!sourceEntry.note) { unsetFields.note = 1; }
 
-          const updateOp: Record<string, unknown> = { $set: updateData };
-          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+          const updateOp = buildUpdateOp(
+            updateData,
+            sourceEntry.startTime,
+            sourceEntry.note,
+            sourceEntry.leaveDuration,
+            sourceEntry.halfDayPortion,
+            sourceEntry.workingPortion,
+          );
 
           await Entry.findOneAndUpdate(
             { userId, date },
@@ -606,7 +634,7 @@ export const repeatPattern = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { status, daysOfWeek, startDate, endDate, note, startTime, endTime } = req.body;
+    const { status, daysOfWeek, startDate, endDate, note, startTime, endTime, leaveDuration, halfDayPortion, workingPortion } = req.body;
     const userId = req.user!._id;
     const isAdmin = req.user!.role === 'admin';
 
@@ -669,16 +697,15 @@ export const repeatPattern = async (
             userId,
             date,
             status,
+            leaveDuration: (status === 'leave' && leaveDuration) ? leaveDuration : undefined,
+            halfDayPortion: (status === 'leave' && leaveDuration === 'half' && halfDayPortion) ? halfDayPortion : undefined,
+            workingPortion: (status === 'leave' && leaveDuration === 'half') ? (workingPortion || 'wfh') : undefined,
             note: note ? sanitizeText(note) : undefined,
             startTime: startTime || undefined,
             endTime: endTime || undefined,
           };
-          const unsetFields: Record<string, 1> = {};
-          if (!startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
-          if (!note) { unsetFields.note = 1; }
 
-          const updateOp: Record<string, unknown> = { $set: updateData };
-          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+          const updateOp = buildUpdateOp(updateData, startTime, note, leaveDuration, halfDayPortion, workingPortion);
 
           await Entry.findOneAndUpdate(
             { userId, date },
@@ -788,13 +815,19 @@ export const copyRange = async (
             note: sourceEntry.note || undefined,
             startTime: sourceEntry.startTime || undefined,
             endTime: sourceEntry.endTime || undefined,
+            leaveDuration: sourceEntry.leaveDuration || undefined,
+            halfDayPortion: sourceEntry.halfDayPortion || undefined,
+            workingPortion: sourceEntry.workingPortion || undefined,
           };
-          const unsetFields: Record<string, 1> = {};
-          if (!sourceEntry.startTime) { unsetFields.startTime = 1; unsetFields.endTime = 1; }
-          if (!sourceEntry.note) { unsetFields.note = 1; }
 
-          const updateOp: Record<string, unknown> = { $set: updateData };
-          if (Object.keys(unsetFields).length) updateOp.$unset = unsetFields;
+          const updateOp = buildUpdateOp(
+            updateData,
+            sourceEntry.startTime,
+            sourceEntry.note,
+            sourceEntry.leaveDuration,
+            sourceEntry.halfDayPortion,
+            sourceEntry.workingPortion,
+          );
 
           await Entry.findOneAndUpdate(
             { userId, date: tgtDateStr },
@@ -852,14 +885,14 @@ export const getTeamSummary = async (
     });
 
     // Build summary per date
-    const summary: Record<string, { office: number; leave: number; wfh: number; total: number }> = {};
+    const summary: Record<string, { office: number; leave: number; wfh: number; halfDayLeave: number; total: number }> = {};
 
     // Init all dates
     const [year, mo] = month.split('-').map(Number);
     const daysCount = new Date(year, mo, 0).getDate();
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = `${year}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      summary[dateStr] = { office: 0, leave: 0, wfh: totalMembers, total: totalMembers };
+      summary[dateStr] = { office: 0, leave: 0, wfh: totalMembers, halfDayLeave: 0, total: totalMembers };
     }
 
     // Tally entries
@@ -869,8 +902,18 @@ export const getTeamSummary = async (
         summary[e.date].office++;
         summary[e.date].wfh--;
       } else if (e.status === 'leave') {
-        summary[e.date].leave++;
-        summary[e.date].wfh--;
+        if (e.leaveDuration === 'half') {
+          // Half-day leave: count as partial leave, and working portion contributes
+          summary[e.date].halfDayLeave++;
+          summary[e.date].leave++;
+          summary[e.date].wfh--;
+          if (e.workingPortion === 'office') {
+            summary[e.date].office++;
+          }
+        } else {
+          summary[e.date].leave++;
+          summary[e.date].wfh--;
+        }
       }
     });
 

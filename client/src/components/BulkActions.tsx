@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { entryApi, templateApi } from '../api';
-import type { Template, StatusType } from '../types';
+import type { Template, StatusType, LeaveDuration, HalfDayPortion, WorkingPortion } from '../types';
 import {
   getTodayString,
   getMaxPlanDate,
@@ -55,6 +55,9 @@ export const BulkActionToolbar: React.FC<
   const [note, setNote] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [leaveDuration, setLeaveDuration] = useState<LeaveDuration>('full');
+  const [halfDayPortion, setHalfDayPortion] = useState<HalfDayPortion>('first-half');
+  const [workingPortion, setWorkingPortion] = useState<WorkingPortion>('wfh');
   const [loading, setLoading] = useState(false);
 
   const warnings = checkConflicts(selectedDates, holidays, status, startTime, endTime, entries);
@@ -63,10 +66,16 @@ export const BulkActionToolbar: React.FC<
     if (selectedDates.length === 0) return;
     setLoading(true);
     try {
+      const opts: Record<string, any> = status !== 'clear' ? { note: note || undefined, startTime: startTime || undefined, endTime: endTime || undefined } : {};
+      if (status === 'leave' && leaveDuration === 'half') {
+        opts.leaveDuration = 'half';
+        opts.halfDayPortion = halfDayPortion;
+        opts.workingPortion = workingPortion;
+      }
       const res = await entryApi.bulkSet(
         selectedDates,
         status,
-        status !== 'clear' ? { note: note || undefined, startTime: startTime || undefined, endTime: endTime || undefined } : undefined,
+        Object.keys(opts).length > 0 ? opts : undefined,
       );
       const data = res.data.data;
       if (data) {
@@ -139,6 +148,57 @@ export const BulkActionToolbar: React.FC<
               className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
               placeholder="Note for all dates" />
           </div>
+        )}
+
+        {/* Half-day leave options */}
+        {status === 'leave' && (
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Duration</label>
+            <div className="flex gap-1">
+              <button onClick={() => setLeaveDuration('full')}
+                className={`px-2 py-1.5 text-xs rounded-lg border transition-all ${
+                  leaveDuration === 'full' ? 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                }`}>
+                Full Day
+              </button>
+              <button onClick={() => setLeaveDuration('half')}
+                className={`px-2 py-1.5 text-xs rounded-lg border transition-all ${
+                  leaveDuration === 'half' ? 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                }`}>
+                Half Day
+              </button>
+            </div>
+          </div>
+        )}
+        {status === 'leave' && leaveDuration === 'half' && (
+          <>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Which half?</label>
+              <div className="flex gap-1">
+                <button onClick={() => setHalfDayPortion('first-half')}
+                  className={`px-2 py-1.5 text-xs rounded-lg border transition-all ${
+                    halfDayPortion === 'first-half' ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                  }`}>AM</button>
+                <button onClick={() => setHalfDayPortion('second-half')}
+                  className={`px-2 py-1.5 text-xs rounded-lg border transition-all ${
+                    halfDayPortion === 'second-half' ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                  }`}>PM</button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Other half</label>
+              <div className="flex gap-1">
+                <button onClick={() => setWorkingPortion('wfh')}
+                  className={`px-2 py-1.5 text-xs rounded-lg border transition-all ${
+                    workingPortion === 'wfh' ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                  }`}>🏠 WFH</button>
+                <button onClick={() => setWorkingPortion('office')}
+                  className={`px-2 py-1.5 text-xs rounded-lg border transition-all ${
+                    workingPortion === 'office' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                  }`}>🏢 Office</button>
+              </div>
+            </div>
+          </>
         )}
 
         <button onClick={handleApply} disabled={loading}
@@ -233,6 +293,9 @@ export const RepeatPatternModal: React.FC<{
   const [note, setNote] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [rpLeaveDuration, setRpLeaveDuration] = useState<LeaveDuration>('full');
+  const [rpHalfDayPortion, setRpHalfDayPortion] = useState<HalfDayPortion>('first-half');
+  const [rpWorkingPortion, setRpWorkingPortion] = useState<WorkingPortion>('wfh');
   const [loading, setLoading] = useState(false);
 
   const toggleDay = (d: number) => {
@@ -251,6 +314,11 @@ export const RepeatPatternModal: React.FC<{
         note: note || undefined,
         startTime: startTime || undefined,
         endTime: endTime || undefined,
+        ...(status === 'leave' && rpLeaveDuration === 'half' ? {
+          leaveDuration: 'half' as const,
+          halfDayPortion: rpHalfDayPortion,
+          workingPortion: rpWorkingPortion,
+        } : {}),
       });
       const data = res.data.data!;
       toast.success(`Repeat applied: ${data.processed} dates updated, ${data.skipped} skipped`);
@@ -343,6 +411,55 @@ export const RepeatPatternModal: React.FC<{
           </div>
         )}
 
+        {/* Half-day leave options */}
+        {status === 'leave' && (
+          <div className="mb-4 space-y-3 p-3 bg-orange-50/50 dark:bg-orange-900/10 rounded-lg border border-orange-100 dark:border-orange-900/30">
+            <div>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1.5 font-medium">Leave Duration</label>
+              <div className="flex gap-2">
+                <button onClick={() => setRpLeaveDuration('full')}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition-all ${
+                    rpLeaveDuration === 'full' ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                  }`}>Full Day</button>
+                <button onClick={() => setRpLeaveDuration('half')}
+                  className={`flex-1 py-1.5 text-xs rounded-lg border transition-all ${
+                    rpLeaveDuration === 'half' ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                  }`}>Half Day</button>
+              </div>
+            </div>
+            {rpLeaveDuration === 'half' && (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1.5">Which Half?</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setRpHalfDayPortion('first-half')}
+                      className={`flex-1 py-1.5 text-xs rounded-lg border transition-all ${
+                        rpHalfDayPortion === 'first-half' ? 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                      }`}>🌅 First Half (AM)</button>
+                    <button onClick={() => setRpHalfDayPortion('second-half')}
+                      className={`flex-1 py-1.5 text-xs rounded-lg border transition-all ${
+                        rpHalfDayPortion === 'second-half' ? 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                      }`}>🌇 Second Half (PM)</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1.5">Working Other Half From</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setRpWorkingPortion('wfh')}
+                      className={`flex-1 py-1.5 text-xs rounded-lg border transition-all ${
+                        rpWorkingPortion === 'wfh' ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                      }`}>🏠 WFH</button>
+                    <button onClick={() => setRpWorkingPortion('office')}
+                      className={`flex-1 py-1.5 text-xs rounded-lg border transition-all ${
+                        rpWorkingPortion === 'office' ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 font-semibold' : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600'
+                      }`}>🏢 Office</button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300">Cancel</button>
           <button onClick={handleRepeat} disabled={loading || daysOfWeek.length === 0}
@@ -369,7 +486,26 @@ export const TemplatesPanel: React.FC<{
   const [newStartTime, setNewStartTime] = useState('');
   const [newEndTime, setNewEndTime] = useState('');
   const [newNote, setNewNote] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [newLeaveDuration, setNewLeaveDuration] = useState<LeaveDuration>('full');
+  const [newHalfDayPortion, setNewHalfDayPortion] = useState<HalfDayPortion>('first-half');
+  const [newWorkingPortion, setNewWorkingPortion] = useState<WorkingPortion>('wfh');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+
+  // Delete guard
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+
+  // Edit state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editStatus, setEditStatus] = useState<'office' | 'leave'>('office');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editLeaveDuration, setEditLeaveDuration] = useState<LeaveDuration>('full');
+  const [editHalfDayPortion, setEditHalfDayPortion] = useState<HalfDayPortion>('first-half');
+  const [editWorkingPortion, setEditWorkingPortion] = useState<WorkingPortion>('wfh');
 
   useEffect(() => {
     templateApi.getTemplates()
@@ -381,9 +517,55 @@ export const TemplatesPanel: React.FC<{
       });
   }, []);
 
+  const startEdit = (t: Template) => {
+    setEditId(t._id);
+    setEditName(t.name);
+    setEditStatus(t.status);
+    setEditStartTime(t.startTime || '');
+    setEditEndTime(t.endTime || '');
+    setEditNote(t.note || '');
+    setEditLeaveDuration(t.leaveDuration || 'full');
+    setEditHalfDayPortion(t.halfDayPortion || 'first-half');
+    setEditWorkingPortion(t.workingPortion || 'wfh');
+    setShowCreate(false);
+  };
+
+  const cancelEdit = () => { setEditId(null); };
+
+  const handleUpdate = async () => {
+    if (!editId || !editName.trim()) { toast.error('Name is required'); return; }
+    setIsUpdating(true);
+    try {
+      const res = await templateApi.updateTemplate(editId, {
+        name: editName.trim(),
+        status: editStatus,
+        startTime: editStartTime || undefined,
+        endTime: editEndTime || undefined,
+        note: editNote || undefined,
+        ...(editStatus === 'leave' && editLeaveDuration === 'half' ? {
+          leaveDuration: 'half' as const,
+          halfDayPortion: editHalfDayPortion,
+          workingPortion: editWorkingPortion,
+        } : { leaveDuration: 'full' as const }),
+      });
+      const updated = res.data?.data;
+      if (updated) {
+        setTemplates((prev) => prev.map((t) => (t._id === editId ? updated : t)));
+        setEditId(null);
+        toast.success('Template updated');
+      } else {
+        toast.error('Unexpected response from server');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update template');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleCreate = async () => {
     if (!newName.trim()) { toast.error('Name is required'); return; }
-    setLoading(true);
+    setIsCreating(true);
     try {
       const res = await templateApi.createTemplate({
         name: newName.trim(),
@@ -391,25 +573,40 @@ export const TemplatesPanel: React.FC<{
         startTime: newStartTime || undefined,
         endTime: newEndTime || undefined,
         note: newNote || undefined,
+        ...(newStatus === 'leave' && newLeaveDuration === 'half' ? {
+          leaveDuration: 'half' as const,
+          halfDayPortion: newHalfDayPortion,
+          workingPortion: newWorkingPortion,
+        } : {}),
       });
-      setTemplates((prev) => [...prev, res.data.data!]);
-      setShowCreate(false);
-      setNewName(''); setNewStartTime(''); setNewEndTime(''); setNewNote('');
+      const created = res.data?.data;
+      if (created) {
+        setTemplates((prev) => [...prev, created]);
+        setShowCreate(false);
+      } else {
+        toast.error('Unexpected response from server');
+      }
+      setNewName(''); setNewStartTime(''); setNewEndTime(''); setNewNote(''); setNewLeaveDuration('full'); setNewHalfDayPortion('first-half'); setNewWorkingPortion('wfh');
       toast.success('Template created');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to create template');
     } finally {
-      setLoading(false);
+      setIsCreating(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    if (deletingIds.has(id)) return;
+    setDeletingIds((prev) => new Set(prev).add(id));
     try {
       await templateApi.deleteTemplate(id);
       setTemplates((prev) => prev.filter((t) => t._id !== id));
+      if (editId === id) setEditId(null);
       toast.success('Template deleted');
     } catch {
       toast.error('Failed to delete template');
+    } finally {
+      setDeletingIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     }
   };
 
@@ -418,19 +615,25 @@ export const TemplatesPanel: React.FC<{
       toast.error('Select dates first to apply template');
       return;
     }
-    setLoading(true);
+    setIsApplying(true);
     try {
-      await entryApi.bulkSet(selectedDates, template.status, {
+      const opts: Record<string, any> = {
         note: template.note,
         startTime: template.startTime,
         endTime: template.endTime,
-      });
+      };
+      if (template.status === 'leave' && template.leaveDuration === 'half') {
+        opts.leaveDuration = 'half';
+        opts.halfDayPortion = template.halfDayPortion;
+        opts.workingPortion = template.workingPortion || 'wfh';
+      }
+      await entryApi.bulkSet(selectedDates, template.status, opts);
       toast.success(`Template "${template.name}" applied to ${selectedDates.length} dates`);
       onApplied();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to apply template');
     } finally {
-      setLoading(false);
+      setIsApplying(false);
     }
   };
 
@@ -438,7 +641,7 @@ export const TemplatesPanel: React.FC<{
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 transition-colors">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">⚡ Quick Templates</h3>
-        <button onClick={() => setShowCreate(!showCreate)}
+        <button onClick={() => { setShowCreate(!showCreate); setEditId(null); }}
           className="text-xs text-primary-600 hover:text-primary-700 font-medium">
           {showCreate ? 'Cancel' : '+ New'}
         </button>
@@ -451,27 +654,73 @@ export const TemplatesPanel: React.FC<{
 
       <div className="space-y-1.5">
         {templates.map((t) => (
-          <div key={t._id} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg group">
-            <div className="flex-1 min-w-0">
-              <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t.name}</span>
-              <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
-                {t.status === 'office' ? '🏢' : '🌴'} {t.status}
-                {t.startTime && ` ⏰ ${t.startTime}–${t.endTime}`}
-                {t.note && ` 📝 ${t.note}`}
-              </span>
-            </div>
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => handleApply(t)}
-                disabled={selectedDates.length === 0 || loading}
-                className="text-[10px] px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 disabled:opacity-50"
-                title={selectedDates.length === 0 ? 'Select dates first' : `Apply to ${selectedDates.length} dates`}>
-                Apply
-              </button>
-              <button onClick={() => handleDelete(t._id)}
-                className="text-[10px] px-2 py-0.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/50">
-                ×
-              </button>
-            </div>
+          <div key={t._id}>
+            {editId === t._id ? (
+              /* ── Inline edit form ── */
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-2">
+                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Template name" className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                <div className="flex gap-1">
+                  <button onClick={() => setEditStatus('office')}
+                    className={`flex-1 py-1 text-xs rounded border ${editStatus === 'office' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 font-semibold' : 'border-gray-200 dark:border-gray-600'}`}>
+                    🏢 Office
+                  </button>
+                  <button onClick={() => setEditStatus('leave')}
+                    className={`flex-1 py-1 text-xs rounded border ${editStatus === 'leave' ? 'bg-orange-50 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'border-gray-200 dark:border-gray-600'}`}>
+                    🌴 Leave
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">–</span>
+                  <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                </div>
+                <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value.slice(0, 500))}
+                  placeholder="Note (optional)" className="w-full px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                <div className="flex gap-1">
+                  <button onClick={cancelEdit}
+                    className="flex-1 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600">
+                    Cancel
+                  </button>
+                  <button onClick={handleUpdate} disabled={isUpdating || !editName.trim()}
+                    className="flex-1 py-1.5 bg-primary-600 text-white text-xs rounded hover:bg-primary-700 disabled:opacity-50">
+                    {isUpdating ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Normal display row ── */
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg group">
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{t.name}</span>
+                  <span className="ml-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    {t.status === 'office' ? '🏢' : '🌴'} {t.status}
+                    {t.leaveDuration === 'half' && ` (½ ${t.halfDayPortion === 'first-half' ? 'AM' : 'PM'}, ${t.workingPortion === 'office' ? '🏢' : '🏠'} other)`}
+                    {t.startTime && ` ⏰ ${t.startTime}–${t.endTime}`}
+                    {t.note && ` 📝 ${t.note}`}
+                  </span>
+                </div>
+                <div className="flex gap-1 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                  <button onClick={() => handleApply(t)}
+                    disabled={selectedDates.length === 0 || isApplying}
+                    className="text-[10px] px-2 py-0.5 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 disabled:opacity-50"
+                    title={selectedDates.length === 0 ? 'Select dates first' : `Apply to ${selectedDates.length} dates`}>
+                    Apply
+                  </button>
+                  <button onClick={() => startEdit(t)}
+                    className="text-[10px] px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-100 dark:hover:bg-blue-900/50">
+                    ✏️
+                  </button>
+                  <button onClick={() => handleDelete(t._id)}
+                    disabled={deletingIds.has(t._id)}
+                    className="text-[10px] px-2 py-0.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    ×
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -500,9 +749,9 @@ export const TemplatesPanel: React.FC<{
           </div>
           <input type="text" value={newNote} onChange={(e) => setNewNote(e.target.value.slice(0, 500))}
             placeholder="Default note (optional)" className="w-full px-2 py-1 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
-          <button onClick={handleCreate} disabled={loading || !newName.trim()}
+          <button onClick={handleCreate} disabled={isCreating || !newName.trim()}
             className="w-full py-1.5 bg-primary-600 text-white text-xs rounded hover:bg-primary-700 disabled:opacity-50">
-            {loading ? 'Creating…' : 'Create Template'}
+            {isCreating ? 'Creating…' : 'Create Template'}
           </button>
         </div>
       )}

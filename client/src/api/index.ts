@@ -20,7 +20,24 @@ import type {
   WorkbotApplyResult,
   CalendarEvent,
   MyPercentageResponse,
+  LeaveDuration,
+  HalfDayPortion,
+  WorkingPortion,
 } from '../types';
+
+/** Half-day leave fields shared across entry API methods */
+export interface LeaveOptions {
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
+}
+
+/** Common optional fields for entry creation/update */
+export interface EntryOptions extends LeaveOptions {
+  note?: string;
+  startTime?: string;
+  endTime?: string;
+}
 
 // ─── Auth ────────────────────────────────────
 export const authApi = {
@@ -50,33 +67,30 @@ export const entryApi = {
   getTeamSummary: (month: string) =>
     api.get<ApiResponse<TeamSummary>>('/entries/team-summary', { params: { month } }),
 
-  upsertEntry: (date: string, status: 'office' | 'leave', opts?: { note?: string; startTime?: string; endTime?: string }) =>
+  upsertEntry: (date: string, status: 'office' | 'leave', opts?: EntryOptions) =>
     api.put<ApiResponse<Entry>>('/entries', { date, status, ...opts }),
 
   deleteEntry: (date: string) =>
     api.delete<ApiResponse>(`/entries/${date}`),
 
-  adminUpsertEntry: (userId: string, date: string, status: 'office' | 'leave', opts?: { note?: string; startTime?: string; endTime?: string }) =>
+  adminUpsertEntry: (userId: string, date: string, status: 'office' | 'leave', opts?: EntryOptions) =>
     api.put<ApiResponse<Entry>>('/entries/admin', { userId, date, status, ...opts }),
 
   adminDeleteEntry: (userId: string, date: string) =>
     api.delete<ApiResponse>(`/entries/admin/${userId}/${date}`),
 
   // Bulk operations
-  bulkSet: (dates: string[], status: 'office' | 'leave' | 'clear', opts?: { note?: string; startTime?: string; endTime?: string }) =>
+  bulkSet: (dates: string[], status: 'office' | 'leave' | 'clear', opts?: EntryOptions) =>
     api.post<ApiResponse<BulkResult>>('/entries/bulk', { dates, status, ...opts }),
 
   copyFromDate: (sourceDate: string, targetDates: string[]) =>
     api.post<ApiResponse<CopyResult>>('/entries/copy', { sourceDate, targetDates }),
 
-  repeatPattern: (data: {
+  repeatPattern: (data: EntryOptions & {
     status: 'office' | 'leave' | 'clear';
     daysOfWeek: number[];
     startDate: string;
     endDate: string;
-    note?: string;
-    startTime?: string;
-    endTime?: string;
   }) => api.post<ApiResponse<BulkResult>>('/entries/repeat', data),
 
   copyRange: (sourceStart: string, sourceEnd: string, targetStart: string) =>
@@ -120,8 +134,11 @@ export const templateApi = {
   getTemplates: () =>
     api.get<ApiResponse<Template[]>>('/templates'),
 
-  createTemplate: (data: { name: string; status: 'office' | 'leave'; startTime?: string; endTime?: string; note?: string }) =>
+  createTemplate: (data: EntryOptions & { name: string; status: 'office' | 'leave' }) =>
     api.post<ApiResponse<Template>>('/templates', data),
+
+  updateTemplate: (id: string, data: EntryOptions & { name?: string; status?: 'office' | 'leave' }) =>
+    api.put<ApiResponse<Template>>(`/templates/${id}`, data),
 
   deleteTemplate: (id: string) =>
     api.delete<ApiResponse>(`/templates/${id}`),

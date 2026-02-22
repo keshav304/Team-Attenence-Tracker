@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef, Component, type ErrorInfo, type ReactNode } from 'react';
-import { entryApi, holidayApi, statusApi, eventApi } from '../api';
+import { entryApi, holidayApi, statusApi, eventApi, templateApi } from '../api';
 import { useAuth } from '../context/AuthContext';
-import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent } from '../types';
+import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent, Template, LeaveDuration, HalfDayPortion, WorkingPortion } from '../types';
 import {
   getCurrentMonth,
   offsetMonth,
@@ -70,6 +70,9 @@ interface EditCellState {
   note: string;
   startTime: string;
   endTime: string;
+  leaveDuration: LeaveDuration;
+  halfDayPortion: HalfDayPortion;
+  workingPortion: WorkingPortion;
 }
 
 /* ─── Error Boundary ──────────────────────────────── */
@@ -121,6 +124,8 @@ const TeamCalendarPage: React.FC = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventDetailList, setEventDetailList] = useState<CalendarEvent[]>([]);
   const [eventDetailIdx, setEventDetailIdx] = useState(0);
+
+  const [templates, setTemplates] = useState<Template[]>([]);
 
   const days = useMemo(() => getDaysInMonth(month), [month]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -217,6 +222,12 @@ const TeamCalendarPage: React.FC = () => {
   useEffect(() => { fetchTodayStatus(); }, [fetchTodayStatus]);
 
   useEffect(() => {
+    templateApi.getTemplates()
+      .then((res) => setTemplates(res.data.data || []))
+      .catch((err) => console.warn('[TeamCalendar] Failed to load templates:', err));
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (editCell) setEditCell(null);
@@ -257,12 +268,15 @@ const TeamCalendarPage: React.FC = () => {
       note: existing?.note || '',
       startTime: existing?.startTime || '',
       endTime: existing?.endTime || '',
+      leaveDuration: existing?.leaveDuration || 'full',
+      halfDayPortion: existing?.halfDayPortion || 'first-half',
+      workingPortion: existing?.workingPortion || 'wfh',
     });
   };
 
   const handleSaveEdit = async () => {
     if (!editCell) return;
-    const { userId, date, status, note, startTime, endTime } = editCell;
+    const { userId, date, status, note, startTime, endTime, leaveDuration, halfDayPortion, workingPortion } = editCell;
 
     if ((startTime && !endTime) || (!startTime && endTime)) {
       toast.error('Provide both start and end time, or leave both empty');
@@ -279,7 +293,16 @@ const TeamCalendarPage: React.FC = () => {
     setSaving(true);
     try {
       const isSelf = userId === user?._id;
-      const opts = { note: note || '', startTime: startTime || '', endTime: endTime || '' };
+      const opts: Record<string, any> = { note: note || '', startTime: startTime || '', endTime: endTime || '' };
+      if (status === 'leave' && leaveDuration === 'half') {
+        opts.leaveDuration = 'half';
+        opts.halfDayPortion = halfDayPortion;
+        opts.workingPortion = workingPortion;
+      } else if (status === 'leave') {
+        opts.leaveDuration = 'full';
+        opts.halfDayPortion = undefined;
+        opts.workingPortion = undefined;
+      }
 
       if (status === 'wfh') {
         if (isAdmin && !isSelf) await entryApi.adminDeleteEntry(userId, date);
@@ -301,6 +324,9 @@ const TeamCalendarPage: React.FC = () => {
               ...(note ? { note } : {}),
               ...(startTime ? { startTime } : {}),
               ...(endTime ? { endTime } : {}),
+              ...(status === 'leave' && leaveDuration === 'half'
+                ? { leaveDuration, halfDayPortion, workingPortion }
+                : {}),
             };
           }
           return { ...m, entries: newEntries };
@@ -331,6 +357,10 @@ const TeamCalendarPage: React.FC = () => {
     if (holidays[date]) return `🎉 ${holidays[date]}`;
     if (!entry) return 'WFH';
     const parts = [STATUS_CONFIG[entry.status]?.label || entry.status];
+    if (entry.leaveDuration === 'half') {
+      const wp = entry.workingPortion === 'office' ? 'Office' : 'WFH';
+      parts[0] = `½ Leave (${entry.halfDayPortion === 'first-half' ? 'AM' : 'PM'}) + ${wp}`;
+    }
     if (entry.startTime && entry.endTime) parts.push(`⏰ ${entry.startTime}–${entry.endTime}`);
     if (entry.note) parts.push(`📝 ${entry.note}`);
     return parts.join(' · ');
@@ -339,7 +369,11 @@ const TeamCalendarPage: React.FC = () => {
   const buildSummaryTooltip = (date: string): string => {
     const s = summary[date];
     if (!s) return '';
-    return `🏢 ${s.office} in office · 🌴 ${s.leave} on leave · 🏠 ${s.wfh} WFH`;
+    const parts = [`🏢 ${s.office} in office · 🌴 ${s.leave} on leave · 🏠 ${s.wfh} WFH`];
+    if (s.halfDayLeave && s.halfDayLeave > 0) {
+      parts.push(`(${s.halfDayLeave} half-day leave)`);
+    }
+    return parts.join(' ');
   };
 
   const eventsMap = useMemo(() => {
@@ -638,10 +672,23 @@ const TeamCalendarPage: React.FC = () => {
                             {!weekend && config && status !== 'weekend' && (
                               <div className="relative">
                                 <div
-                                  className={`inline-flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border ${config.color} w-full justify-center hover:brightness-110 transition-all`}
+                                  className={`inline-flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border ${
+                                    entry?.leaveDuration === 'half'
+                                      ? 'bg-gradient-to-b from-green-500/20 to-amber-500/20 text-orange-600 dark:text-orange-400 border-orange-500/30'
+                                      : config.color
+                                  } w-full justify-center hover:brightness-110 transition-all`}
                                 >
-                                  {CellIcon && <CellIcon size={12} className="shrink-0" />}
-                                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">{config.label}</span>
+                                  {entry?.leaveDuration === 'half' ? (
+                                    <>
+                                      <span className="text-[10px] sm:text-xs font-bold">½</span>
+                                      <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Leave</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {CellIcon && <CellIcon size={12} className="shrink-0" />}
+                                      <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider">{config.label}</span>
+                                    </>
+                                  )}
                                 </div>
                                 {(hasTime || hasNote) && (
                                   <span className="absolute -top-1 -right-1 flex gap-px">
@@ -661,6 +708,43 @@ const TeamCalendarPage: React.FC = () => {
                                 {holidays[editCell.date] && (
                                   <div className="text-[10px] bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded">
                                     ⚠️ This is a holiday: {holidays[editCell.date]}
+                                  </div>
+                                )}
+
+                                {/* Template picker */}
+                                {templates.length > 0 && (
+                                  <div>
+                                    <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">Apply Template</label>
+                                    <select
+                                      className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                      value=""
+                                      onChange={(e) => {
+                                        const tpl = templates.find((t) => t._id === e.target.value);
+                                        if (tpl) {
+                                          setEditCell((prev) => prev ? {
+                                            ...prev,
+                                            status: tpl.status,
+                                            note: tpl.note || '',
+                                            startTime: tpl.startTime || '',
+                                            endTime: tpl.endTime || '',
+                                            leaveDuration: (tpl.leaveDuration as LeaveDuration) || 'full',
+                                            halfDayPortion: (tpl.halfDayPortion as HalfDayPortion) || 'first-half',
+                                            workingPortion: (tpl.workingPortion as WorkingPortion) || 'wfh',
+                                          } : prev);
+                                        }
+                                      }}
+                                    >
+                                      <option value="">— Select a template —</option>
+                                      {templates.map((t) => {
+                                        const statusEmoji: Record<string, string> = { office: '🏢', leave: '🌴', wfh: '🏠' };
+                                        const emoji = statusEmoji[t.status] ?? '📋';
+                                        return (
+                                          <option key={t._id} value={t._id}>
+                                            {t.name} ({emoji} {t.status}{t.startTime ? ` ⏰${t.startTime}–${t.endTime}` : ''})
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
                                   </div>
                                 )}
 
@@ -691,6 +775,58 @@ const TeamCalendarPage: React.FC = () => {
                                 {editCell.status === 'leave' && (editCell.startTime || editCell.endTime) && (
                                   <div className="text-[10px] bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded">
                                     ⚠️ Time window on leave is unusual
+                                  </div>
+                                )}
+
+                                {/* Half-day leave options */}
+                                {editCell.status === 'leave' && (
+                                  <div className="space-y-1.5 p-2 bg-orange-50/50 dark:bg-orange-900/10 rounded border border-orange-100 dark:border-orange-900/30">
+                                    <div className="flex gap-1">
+                                      <button
+                                        className={`flex-1 py-1 text-[10px] rounded border transition-all ${
+                                          editCell.leaveDuration === 'full' ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'border-gray-200 dark:border-gray-600'
+                                        }`}
+                                        onClick={() => setEditCell({ ...editCell, leaveDuration: 'full' })}
+                                      >Full Day</button>
+                                      <button
+                                        className={`flex-1 py-1 text-[10px] rounded border transition-all ${
+                                          editCell.leaveDuration === 'half' ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 font-semibold' : 'border-gray-200 dark:border-gray-600'
+                                        }`}
+                                        onClick={() => setEditCell({ ...editCell, leaveDuration: 'half' })}
+                                      >Half Day</button>
+                                    </div>
+                                    {editCell.leaveDuration === 'half' && (
+                                      <>
+                                        <div className="flex gap-1">
+                                          <button
+                                            className={`flex-1 py-1 text-[10px] rounded border transition-all ${
+                                              editCell.halfDayPortion === 'first-half' ? 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 font-semibold' : 'border-gray-200 dark:border-gray-600'
+                                            }`}
+                                            onClick={() => setEditCell({ ...editCell, halfDayPortion: 'first-half' })}
+                                          >🌅 AM</button>
+                                          <button
+                                            className={`flex-1 py-1 text-[10px] rounded border transition-all ${
+                                              editCell.halfDayPortion === 'second-half' ? 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 font-semibold' : 'border-gray-200 dark:border-gray-600'
+                                            }`}
+                                            onClick={() => setEditCell({ ...editCell, halfDayPortion: 'second-half' })}
+                                          >🌇 PM</button>
+                                        </div>
+                                        <div className="flex gap-1">
+                                          <button
+                                            className={`flex-1 py-1 text-[10px] rounded border transition-all ${
+                                              editCell.workingPortion === 'wfh' ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 font-semibold' : 'border-gray-200 dark:border-gray-600'
+                                            }`}
+                                            onClick={() => setEditCell({ ...editCell, workingPortion: 'wfh' })}
+                                          >🏠 WFH</button>
+                                          <button
+                                            className={`flex-1 py-1 text-[10px] rounded border transition-all ${
+                                              editCell.workingPortion === 'office' ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 font-semibold' : 'border-gray-200 dark:border-gray-600'
+                                            }`}
+                                            onClick={() => setEditCell({ ...editCell, workingPortion: 'office' })}
+                                          >🏢 Office</button>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 )}
 

@@ -84,7 +84,7 @@ async function computeAttendanceStats(
   userId: string | any,
   startDate: string,
   endDate: string
-): Promise<{ stats: AttendanceStats; workingDays: string[]; entryMap: Map<string, string> }> {
+): Promise<{ stats: AttendanceStats; workingDays: string[]; entryMap: Map<string, { status: string; leaveDuration?: string; workingPortion?: string }> }> {
   const [holidays, entries] = await Promise.all([
     Holiday.find({ date: { $gte: startDate, $lte: endDate } }),
     Entry.find({ userId, date: { $gte: startDate, $lte: endDate } }),
@@ -94,13 +94,30 @@ async function computeAttendanceStats(
   const workingDays = getWorkingDays(startDate, endDate, holidaySet);
   const totalWorkingDays = workingDays.length;
 
-  const entryMap = new Map(entries.map((e) => [e.date, e.status]));
+  const entryMap = new Map(entries.map((e) => [e.date, {
+    status: e.status,
+    leaveDuration: e.leaveDuration,
+    workingPortion: e.workingPortion,
+  }]));
   let officeDays = 0;
   let leaveDays = 0;
   for (const d of workingDays) {
-    const status = entryMap.get(d);
-    if (status === 'office') officeDays++;
-    else if (status === 'leave') leaveDays++;
+    const entry = entryMap.get(d);
+    if (!entry) continue;
+    if (entry.status === 'office') {
+      officeDays++;
+    } else if (entry.status === 'leave') {
+      if (entry.leaveDuration === 'half') {
+        // Half-day leave = 0.5 leave day
+        leaveDays += 0.5;
+        // Working portion contributes to office or wfh
+        if (entry.workingPortion === 'office') {
+          officeDays += 0.5;
+        }
+      } else {
+        leaveDays++;
+      }
+    }
   }
   const wfhDays = totalWorkingDays - officeDays - leaveDays;
   const officePercent = totalWorkingDays > 0
@@ -379,9 +396,15 @@ async function handlePersonalAttendance(
     if (workingDays.length === 0) {
       return `${label === 'today' ? 'Today' : 'Tomorrow'} is not a working day (it may be a weekend or holiday).`;
     }
-    const status = entryMap.get(workingDays[0]);
-    if (status === 'office') return `Yes, you are scheduled to be in the office ${label}.`;
-    if (status === 'leave') return `You are on leave ${label}.`;
+    const entry = entryMap.get(workingDays[0]);
+    if (entry?.status === 'office') return `Yes, you are scheduled to be in the office ${label}.`;
+    if (entry?.status === 'leave') {
+      if (entry.leaveDuration === 'half') {
+        const portion = entry.workingPortion === 'office' ? 'in the office' : 'working from home';
+        return `You are on half-day leave ${label}. You'll be ${portion} for the remaining half.`;
+      }
+      return `You are on leave ${label}.`;
+    }
     return `You are working from home (WFH) ${label} — no office or leave entry found.`;
   }
 
@@ -410,7 +433,7 @@ async function handlePersonalAttendance(
   }
 
   // General summary
-  return `Here's your attendance summary for ${label}:\n\n• Office: ${officeDays} days (${officePercent}%)\n• WFH: ${wfhDays} days\n• Leave: ${leaveDays} days\n• Total working days: ${totalWorkingDays}`;
+  return `Here's your attendance summary for ${label}:\n\n• Office: ${officeDays} days (${officePercent}%)\n• WFH: ${wfhDays} days\n• Leave: ${leaveDays} days\n• Total working days: ${totalWorkingDays}\n\nNote: Half-day leave counts as 0.5 leave day, with the working portion contributing to office or WFH.`;
 }
 
 async function handleTeamPresence(question: string): Promise<string> {
@@ -449,9 +472,16 @@ async function handleTeamPresence(question: string): Promise<string> {
 
     // Single day
     if (startDate === endDate && workingDays.length > 0) {
-      const status = entryMap.get(startDate);
+      const entry = entries.find((e) => e.date === startDate);
+      const status = entry?.status;
       if (status === 'office') return `${targetUser.name} is scheduled to be in the office on ${formatDateNice(startDate)}.`;
-      if (status === 'leave') return `${targetUser.name} is on leave on ${formatDateNice(startDate)}.`;
+      if (status === 'leave') {
+        if (entry?.leaveDuration === 'half') {
+          const wp = entry?.workingPortion === 'office' ? 'in the office' : 'working from home';
+          return `${targetUser.name} is on half-day leave on ${formatDateNice(startDate)}, and ${wp} for the remaining half.`;
+        }
+        return `${targetUser.name} is on leave on ${formatDateNice(startDate)}.`;
+      }
       return `${targetUser.name} is working from home (WFH) on ${formatDateNice(startDate)}.`;
     }
 
@@ -504,10 +534,21 @@ async function handleTeamPresence(question: string): Promise<string> {
       const wfhUsers: string[] = [];
 
       users.forEach((u) => {
-        const status = entryMap.get(u._id.toString());
-        if (status === 'office') officeUsers.push(u.name);
-        else if (status === 'leave') leaveUsers.push(u.name);
-        else wfhUsers.push(u.name);
+        const uid = u._id.toString();
+        const entry = entries.find((e) => e.date === date && e.userId.toString() === uid);
+        const status = entry?.status;
+        if (status === 'office') {
+          officeUsers.push(u.name);
+        } else if (status === 'leave') {
+          if (entry?.leaveDuration === 'half') {
+            const wp = entry?.workingPortion === 'office' ? 'office' : 'WFH';
+            leaveUsers.push(`${u.name} (½ leave, ${wp} other half)`);
+          } else {
+            leaveUsers.push(u.name);
+          }
+        } else {
+          wfhUsers.push(u.name);
+        }
       });
 
       if (/leave/.test(q)) {

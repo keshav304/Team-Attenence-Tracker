@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { entryApi, holidayApi, eventApi, analyticsApi } from '../api';
 import { useAuth } from '../context/AuthContext';
-import type { Entry, Holiday, StatusType, CalendarEvent } from '../types';
+import type { Entry, Holiday, StatusType, CalendarEvent, LeaveDuration, HalfDayPortion, WorkingPortion } from '../types';
 import {
   getCurrentMonth,
   offsetMonth,
@@ -32,6 +32,9 @@ interface DayData {
   note?: string;
   startTime?: string;
   endTime?: string;
+  leaveDuration?: LeaveDuration;
+  halfDayPortion?: HalfDayPortion;
+  workingPortion?: WorkingPortion;
 }
 
 const MyCalendarPage: React.FC = () => {
@@ -48,6 +51,9 @@ const MyCalendarPage: React.FC = () => {
   const [modalNote, setModalNote] = useState('');
   const [modalStartTime, setModalStartTime] = useState('');
   const [modalEndTime, setModalEndTime] = useState('');
+  const [modalLeaveDuration, setModalLeaveDuration] = useState<LeaveDuration>('full');
+  const [modalHalfDayPortion, setModalHalfDayPortion] = useState<HalfDayPortion>('first-half');
+  const [modalWorkingPortion, setModalWorkingPortion] = useState<WorkingPortion>('wfh');
   const [saving, setSaving] = useState(false);
 
   // ─── Multi-select / drag state ───────────────
@@ -93,6 +99,9 @@ const MyCalendarPage: React.FC = () => {
           ...(e.note ? { note: e.note } : {}),
           ...(e.startTime ? { startTime: e.startTime } : {}),
           ...(e.endTime ? { endTime: e.endTime } : {}),
+          ...(e.leaveDuration ? { leaveDuration: e.leaveDuration } : {}),
+          ...(e.halfDayPortion ? { halfDayPortion: e.halfDayPortion } : {}),
+          ...(e.workingPortion ? { workingPortion: e.workingPortion } : {}),
         };
       });
       setEntries(eMap);
@@ -197,6 +206,9 @@ const MyCalendarPage: React.FC = () => {
     setModalNote(existing?.note || '');
     setModalStartTime(existing?.startTime || '');
     setModalEndTime(existing?.endTime || '');
+    setModalLeaveDuration(existing?.leaveDuration || 'full');
+    setModalHalfDayPortion(existing?.halfDayPortion || 'first-half');
+    setModalWorkingPortion(existing?.workingPortion || 'wfh');
   };
 
   const closeModal = () => {
@@ -233,11 +245,22 @@ const MyCalendarPage: React.FC = () => {
           return copy;
         });
       } else {
-        await entryApi.upsertEntry(editDate, modalStatus, {
+        const opts: Record<string, any> = {
           note: modalNote || '',
           startTime: modalStartTime || '',
           endTime: modalEndTime || '',
-        });
+        };
+        if (modalStatus === 'leave' && modalLeaveDuration === 'half') {
+          opts.leaveDuration = 'half';
+          opts.halfDayPortion = modalHalfDayPortion;
+          opts.workingPortion = modalWorkingPortion;
+        } else if (modalStatus === 'leave') {
+          // Full-day leave: explicitly clear any previous half-day fields
+          opts.leaveDuration = 'full';
+          opts.halfDayPortion = undefined;
+          opts.workingPortion = undefined;
+        }
+        await entryApi.upsertEntry(editDate, modalStatus, opts);
         setEntries((prev) => ({
           ...prev,
           [editDate]: {
@@ -245,6 +268,9 @@ const MyCalendarPage: React.FC = () => {
             ...(modalNote ? { note: modalNote } : {}),
             ...(modalStartTime ? { startTime: modalStartTime } : {}),
             ...(modalEndTime ? { endTime: modalEndTime } : {}),
+            ...(modalStatus === 'leave' && modalLeaveDuration === 'half'
+              ? { leaveDuration: modalLeaveDuration as LeaveDuration, halfDayPortion: modalHalfDayPortion, workingPortion: modalWorkingPortion }
+              : {}),
           },
         }));
       }
@@ -273,13 +299,24 @@ const MyCalendarPage: React.FC = () => {
         emoji: '🏢',
         textColor: 'text-blue-700 dark:text-blue-400',
       };
-    if (status === 'leave')
+    if (status === 'leave') {
+      const entry = entries[date];
+      if (entry?.leaveDuration === 'half') {
+        const wp = entry.workingPortion === 'office' ? 'Office' : 'WFH';
+        return {
+          label: `½ Leave + ${wp}`,
+          bg: 'bg-gradient-to-b from-orange-50 to-blue-50 dark:from-orange-900/30 dark:to-blue-900/20 border-orange-200 dark:border-orange-800',
+          emoji: '🌗',
+          textColor: 'text-orange-700 dark:text-orange-400',
+        };
+      }
       return {
         label: 'Leave',
         bg: 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800',
         emoji: '🌴',
         textColor: 'text-orange-700 dark:text-orange-400',
       };
+    }
     return {
       label: 'WFH',
       bg: 'bg-green-50/50 dark:bg-green-900/20 border-gray-200 dark:border-gray-700',
@@ -290,13 +327,24 @@ const MyCalendarPage: React.FC = () => {
 
   // Stats — only count entries that fall on actual working days
   const workingDaySet = new Set(days.filter((d) => !isWeekend(d) && !holidays[d]));
-  const workingDayStatuses = Object.entries(entries)
-    .filter(([date]) => workingDaySet.has(date))
-    .map(([, e]) => e.status);
-  const officeDays = workingDayStatuses.filter((s) => s === 'office').length;
-  const leaveDays = workingDayStatuses.filter((s) => s === 'leave').length;
+  const workingDayEntries = Object.entries(entries)
+    .filter(([date]) => workingDaySet.has(date));
+  let officeDays = 0;
+  let leaveDays = 0;
+  for (const [, e] of workingDayEntries) {
+    if (e.status === 'office') {
+      officeDays++;
+    } else if (e.status === 'leave') {
+      if (e.leaveDuration === 'half') {
+        leaveDays += 0.5;
+        if (e.workingPortion === 'office') officeDays += 0.5;
+      } else {
+        leaveDays++;
+      }
+    }
+  }
   const workingDays = workingDaySet.size;
-  const wfhDays = workingDays - officeDays - leaveDays;
+  const wfhDays = Math.max(0, workingDays - officeDays - leaveDays);
 
   // Events lookup: date → events[]
   const eventsMap = useMemo(() => {
@@ -729,6 +777,105 @@ const MyCalendarPage: React.FC = () => {
             {modalStatus === 'leave' && (modalStartTime || modalEndTime) && (
               <div className="mb-3 px-3 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
                 ⚠️ Setting a time window on a leave day is unusual
+              </div>
+            )}
+
+            {/* Half-day leave options */}
+            {modalStatus === 'leave' && (
+              <div className="mb-5 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Leave Duration</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      aria-pressed={modalLeaveDuration === 'full'}
+                      onClick={() => setModalLeaveDuration('full')}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        modalLeaveDuration === 'full'
+                          ? 'bg-orange-50 dark:bg-orange-900/30 ring-2 ring-orange-400 border-transparent'
+                          : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Full Day
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={modalLeaveDuration === 'half'}
+                      onClick={() => setModalLeaveDuration('half')}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        modalLeaveDuration === 'half'
+                          ? 'bg-orange-50 dark:bg-orange-900/30 ring-2 ring-orange-400 border-transparent'
+                          : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Half Day
+                    </button>
+                  </div>
+                </div>
+
+                {modalLeaveDuration === 'half' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Which Half?</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          aria-pressed={modalHalfDayPortion === 'first-half'}
+                          onClick={() => setModalHalfDayPortion('first-half')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                            modalHalfDayPortion === 'first-half'
+                              ? 'bg-yellow-50 dark:bg-yellow-900/30 ring-2 ring-yellow-400 border-transparent'
+                              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          🌅 First Half (AM)
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={modalHalfDayPortion === 'second-half'}
+                          onClick={() => setModalHalfDayPortion('second-half')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                            modalHalfDayPortion === 'second-half'
+                              ? 'bg-yellow-50 dark:bg-yellow-900/30 ring-2 ring-yellow-400 border-transparent'
+                              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          🌇 Second Half (PM)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Working the Other Half From</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          aria-pressed={modalWorkingPortion === 'wfh'}
+                          onClick={() => setModalWorkingPortion('wfh')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                            modalWorkingPortion === 'wfh'
+                              ? 'bg-green-50 dark:bg-green-900/30 ring-2 ring-green-400 border-transparent'
+                              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          🏠 WFH
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={modalWorkingPortion === 'office'}
+                          onClick={() => setModalWorkingPortion('office')}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
+                            modalWorkingPortion === 'office'
+                              ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-400 border-transparent'
+                              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          🏢 Office
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

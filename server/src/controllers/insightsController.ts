@@ -46,7 +46,7 @@ export const getInsights = async (
     const totalWorkingDays = workingDays.length;
 
     // ─── Build entry lookup: userId → date → entry ─
-    const entryMap: Record<string, Record<string, { status: string; startTime?: string; endTime?: string; note?: string }>> = {};
+    const entryMap: Record<string, Record<string, { status: string; startTime?: string; endTime?: string; note?: string; leaveDuration?: string; halfDayPortion?: string; workingPortion?: string }>> = {};
     entries.forEach((e) => {
       const uid = e.userId.toString();
       if (!entryMap[uid]) entryMap[uid] = {};
@@ -55,6 +55,9 @@ export const getInsights = async (
         startTime: e.startTime,
         endTime: e.endTime,
         note: e.note,
+        leaveDuration: e.leaveDuration,
+        halfDayPortion: e.halfDayPortion,
+        workingPortion: e.workingPortion,
       };
     });
 
@@ -108,7 +111,17 @@ export const getInsights = async (
             const dow = new Date(date + 'T00:00:00').getDay();
             officeDayOfWeekCount[dayOfWeekNames[dow]]++;
           } else if (entry.status === 'leave') {
-            leaveDays++;
+            if (entry.leaveDuration === 'half') {
+              // Half-day leave: 0.5 leave + 0.5 wfh/office
+              leaveDays += 0.5;
+              if (entry.workingPortion === 'office') {
+                officeDays += 0.5;
+                const dow = new Date(date + 'T00:00:00').getDay();
+                officeDayOfWeekCount[dayOfWeekNames[dow]] += 0.5;
+              }
+            } else {
+              leaveDays++;
+            }
           }
           if (entry.startTime && entry.endTime) {
             partialDays++;
@@ -165,7 +178,11 @@ export const getInsights = async (
       for (const user of users) {
         const uid = user._id.toString();
         const entry = entryMap[uid]?.[date];
-        if (entry?.status === 'office') count++;
+        if (entry?.status === 'office') {
+          count++;
+        } else if (entry?.status === 'leave' && entry.leaveDuration === 'half' && entry.workingPortion === 'office') {
+          count += 0.5;
+        }
       }
       dailyOfficeCount.push({ date, count });
     }
@@ -233,13 +250,16 @@ export const getUserInsights = async (
     const holidayList = holidays.map((h) => ({ date: h.date, name: h.name }));
 
     // Build entry lookup: date → entry
-    const entryMap: Record<string, { status: string; startTime?: string; endTime?: string; note?: string }> = {};
+    const entryMap: Record<string, { status: string; startTime?: string; endTime?: string; note?: string; leaveDuration?: string; halfDayPortion?: string; workingPortion?: string }> = {};
     entries.forEach((e) => {
       entryMap[e.date] = {
         status: e.status,
         startTime: e.startTime,
         endTime: e.endTime,
         note: e.note,
+        leaveDuration: e.leaveDuration,
+        halfDayPortion: e.halfDayPortion,
+        workingPortion: e.workingPortion,
       };
     });
 
@@ -261,7 +281,10 @@ export const getUserInsights = async (
       isHoliday: boolean;
       holidayName?: string;
       isBeforeJoin: boolean;
-      status: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined';
+      status: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined' | 'half-day-leave';
+      leaveDuration?: string;
+      halfDayPortion?: string;
+      workingPortion?: string;
       startTime?: string;
       endTime?: string;
       note?: string;
@@ -280,7 +303,7 @@ export const getUserInsights = async (
 
       const entry = entryMap[dateStr];
 
-      let effectiveStatus: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined';
+      let effectiveStatus: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined' | 'half-day-leave';
       if (isWeekend) {
         effectiveStatus = 'weekend';
       } else if (isHoliday) {
@@ -295,8 +318,16 @@ export const getUserInsights = async (
             officeDays++;
             effectiveStatus = 'office';
           } else if (entry.status === 'leave') {
-            leaveDays++;
-            effectiveStatus = 'leave';
+            if (entry.leaveDuration === 'half') {
+              leaveDays += 0.5;
+              effectiveStatus = 'half-day-leave';
+              if (entry.workingPortion === 'office') {
+                officeDays += 0.5;
+              }
+            } else {
+              leaveDays++;
+              effectiveStatus = 'leave';
+            }
           } else {
             // fallback
             wfhDays++;
@@ -318,6 +349,9 @@ export const getUserInsights = async (
         holidayName: holiday?.name,
         isBeforeJoin,
         status: effectiveStatus,
+        leaveDuration: entry?.leaveDuration,
+        halfDayPortion: entry?.halfDayPortion,
+        workingPortion: entry?.workingPortion,
         startTime: entry?.startTime,
         endTime: entry?.endTime,
         note: entry?.note,
@@ -393,11 +427,15 @@ export const exportInsightsCsv = async (
     }
 
     // Build entry lookup
-    const entryMap: Record<string, Record<string, string>> = {};
+    const entryMap: Record<string, Record<string, { status: string; leaveDuration?: string; workingPortion?: string }>> = {};
     entries.forEach((e) => {
       const uid = e.userId.toString();
       if (!entryMap[uid]) entryMap[uid] = {};
-      entryMap[uid][e.date] = e.status;
+      entryMap[uid][e.date] = {
+        status: e.status,
+        leaveDuration: e.leaveDuration,
+        workingPortion: e.workingPortion,
+      };
     });
 
     // CSV header
@@ -420,9 +458,19 @@ export const exportInsightsCsv = async (
       let officeDays = 0;
       let leaveDays = 0;
       for (const date of effectiveWorkingDays) {
-        const status = userEntries[date];
-        if (status === 'office') officeDays++;
-        else if (status === 'leave') leaveDays++;
+        const entry = userEntries[date];
+        if (entry) {
+          if (entry.status === 'office') {
+            officeDays++;
+          } else if (entry.status === 'leave') {
+            if (entry.leaveDuration === 'half') {
+              leaveDays += 0.5;
+              if (entry.workingPortion === 'office') officeDays += 0.5;
+            } else {
+              leaveDays++;
+            }
+          }
+        }
       }
       const wfhDays = Math.max(0, effectiveTotal - officeDays - leaveDays);
       const officePercent = effectiveTotal > 0 ? Math.round((officeDays / effectiveTotal) * 100) : 0;

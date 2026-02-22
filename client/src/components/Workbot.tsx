@@ -8,12 +8,13 @@ import React, {
 } from 'react';
 import VoiceInput from './VoiceInput';
 import axios from 'axios';
-import { workbotApi } from '../api';
+import { workbotApi, templateApi } from '../api';
 import type {
   WorkbotAction,
   WorkbotResolvedChange,
   WorkbotApplyItem,
   WorkbotApplyResult,
+  Template,
 } from '../types';
 
 /* ------------------------------------------------------------------ */
@@ -40,8 +41,8 @@ interface WorkbotProps {
 const EXAMPLE_COMMANDS = [
   'Mark Monday Wednesday Friday of next month as office.',
   'Set next week as leave.',
+  'Half day leave tomorrow morning, WFH other half.',
   'Clear Friday.',
-  'Office every Monday next month.',
 ];
 
 const STATUS_OPTIONS: ('office' | 'leave' | 'clear')[] = ['office', 'leave', 'clear'];
@@ -57,7 +58,23 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
   const [changes, setChanges] = useState<WorkbotResolvedChange[]>([]);
   const [applyResult, setApplyResult] = useState<WorkbotApplyResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [templates, setTemplates] = useState<Template[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  /* ── Fetch templates ── */
+  useEffect(() => {
+    templateApi.getTemplates()
+      .then((res) => setTemplates(res.data.data || []))
+      .catch((err) => console.warn('Failed to load templates:', err));
+  }, []);
+
+  /* ── Apply template to all selected rows ── */
+  const applyTemplateToRows = useCallback((tpl: Template) => {
+    const statusVal = tpl.status as 'office' | 'leave';
+    setChanges((prev) =>
+      prev.map((c) => (c.valid && c.selected ? { ...c, status: statusVal, note: tpl.note || c.note } : c))
+    );
+  }, []);
 
   /* ── Submit command ── */
   const handleSubmit = useCallback(
@@ -121,6 +138,11 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
         date: c.date,
         status: c.status,
         note: c.note,
+        ...(c.status === 'leave' && c.leaveDuration === 'half' ? {
+          leaveDuration: c.leaveDuration,
+          ...(c.halfDayPortion ? { halfDayPortion: c.halfDayPortion } : {}),
+          ...(c.workingPortion ? { workingPortion: c.workingPortion } : { workingPortion: 'wfh' as const }),
+        } : {}),
       }));
       const res = await workbotApi.apply(items);
       const result = res.data?.data;
@@ -333,6 +355,32 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
               </div>
             )}
 
+            {/* Template picker for the preview table */}
+            {templates.length > 0 && (
+              <div className="workbot-summary-bar" style={{ gap: '0.5rem', flexWrap: 'wrap' }}>
+                <span className="workbot-summary-icon" aria-hidden="true">⚡</span>
+                <span style={{ fontSize: '0.8125rem' }}>Apply template to selected rows:</span>
+                {templates.map((tpl) => {
+                  const statusEmoji: Record<string, string> = {
+                    office: '🏢',
+                    leave: '🌴',
+                    clear: '🧹',
+                  };
+                  const emoji = statusEmoji[tpl.status] ?? '📋';
+                  return (
+                    <button
+                      key={tpl._id}
+                      className="workbot-example-chip"
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.625rem' }}
+                      onClick={() => applyTemplateToRows(tpl)}
+                    >
+                      {emoji} {tpl.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="workbot-table-wrapper">
               <table className="workbot-table" role="grid">
                 <thead>
@@ -371,23 +419,30 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
                       <td>{c.day}</td>
                       <td>
                         {c.valid ? (
-                          <select
-                            className="workbot-status-select"
-                            value={c.status}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === 'office' || val === 'leave' || val === 'clear') {
-                                changeRowStatus(c.date, val);
-                              }
-                            }}
-                            aria-label={`Status for ${c.date}`}
-                          >
-                            {STATUS_OPTIONS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex flex-col gap-0.5">
+                            <select
+                              className="workbot-status-select"
+                              value={c.status}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === 'office' || val === 'leave' || val === 'clear') {
+                                  changeRowStatus(c.date, val);
+                                }
+                              }}
+                              aria-label={`Status for ${c.date}`}
+                            >
+                              {STATUS_OPTIONS.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                            {c.status === 'leave' && c.leaveDuration === 'half' && (
+                              <span className="text-[10px] text-orange-600 dark:text-orange-400">
+                                ½ {c.halfDayPortion === 'first-half' ? 'AM' : 'PM'} leave, {c.workingPortion === 'office' ? '🏢' : '🏠'} other half
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="workbot-invalid-badge" title={c.validationMessage}>
                             {c.validationMessage}
