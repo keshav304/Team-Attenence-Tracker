@@ -804,7 +804,6 @@ const TeamCalendarPage: React.FC = () => {
                                             }`}
                                             onClick={() => setEditCell({ ...editCell, halfDayPortion: 'first-half' })}
                                           >🌅 AM</button>
-                                          
                                           <button
                                             className={`flex-1 py-1 text-[10px] rounded border transition-all ${
                                               editCell.halfDayPortion === 'second-half' ? 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700 font-semibold' : 'border-gray-200 dark:border-gray-600'
