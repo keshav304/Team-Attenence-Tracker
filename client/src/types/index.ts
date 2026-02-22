@@ -283,3 +283,36 @@ export interface MyPercentageResponse {
   wfhDays: number;
   officePercent: number;
 }
+
+// ─── My Insights (Member) ────────────────────
+export interface MyInsightsPersonal {
+  totalWorkingDays: number;
+  officeDays: number;
+  wfhDays: number;
+  leaveDays: number;
+  officePercent: number;
+  longestOfficeStreak: number;
+}
+
+export interface MyInsightsTeamSnapshot {
+  teamAvgOfficePercent: number;
+  mostPopularOfficeDay: string;
+  totalTeamOfficeDays: number;
+  teamSize: number;
+}
+
+export interface MyInsightsHighlights {
+  longestStreak: {
+    days: number;
+    users: string[];
+  };
+  mostConsistentPlanner: string | null;
+  mostPopularOfficeDay: string;
+  collaborationMagnet: string | null;
+}
+
+export interface MyInsightsResponse {
+  personal: MyInsightsPersonal;
+  teamSnapshot: MyInsightsTeamSnapshot;
+  highlights: MyInsightsHighlights;
+}

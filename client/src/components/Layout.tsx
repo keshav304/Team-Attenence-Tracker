@@ -8,6 +8,7 @@ const ChatAssistant = lazy(() => import('./ChatAssistant'));
 const PAGE_NAMES: Record<string, string> = {
   '/': 'Team Calendar',
   '/my-calendar': 'My Calendar',
+  '/my-insights': 'My Insights',
   '/profile': 'Profile',
   '/admin/users': 'Admin Users',
   '/admin/holidays': 'Admin Holidays',
@@ -19,6 +20,7 @@ const PAGE_NAMES: Record<string, string> = {
 const NAV_ICONS: Record<string, string> = {
   '/': '📅',
   '/my-calendar': '🗓️',
+  '/my-insights': '✨',
   '/profile': '👤',
   '/admin/users': '👥',
   '/admin/holidays': '🎉',
@@ -38,6 +40,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navLinks = [
     { to: '/', label: 'Team View' },
     { to: '/my-calendar', label: 'My Calendar' },
+    { to: '/my-insights', label: 'My Insights' },
     ...(isAdmin
       ? [
           { to: '/admin/users', label: 'Users' },

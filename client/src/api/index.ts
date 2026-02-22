@@ -20,6 +20,7 @@ import type {
   WorkbotApplyResult,
   CalendarEvent,
   MyPercentageResponse,
+  MyInsightsResponse,
   LeaveDuration,
   HalfDayPortion,
   WorkingPortion,
@@ -210,4 +211,10 @@ export const eventApi = {
 export const analyticsApi = {
   getMyPercentage: (month: number, year: number) =>
     api.get<ApiResponse<MyPercentageResponse>>('/analytics/my-percentage', { params: { month, year } }),
+};
+
+// ─── My Insights (Member) ────────────────────
+export const myInsightsApi = {
+  getMonthly: (month: string) =>
+    api.get<ApiResponse<MyInsightsResponse>>('/my-insights/monthly', { params: { month } }),
 };
