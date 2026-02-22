@@ -4,6 +4,7 @@ export interface User {
   email: string;
   role: 'member' | 'admin';
   isActive: boolean;
+  favorites?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -66,6 +67,7 @@ export interface AuthResponse {
 export interface ApiResponse<T = unknown> {
   success: boolean;
   message?: string;
+  code?: string;
   data?: T;
 }
 
@@ -262,6 +264,20 @@ export interface WorkbotApplyResult {
 }
 
 // ─── Events (Admin Event Tagging) ────────────
+export type RsvpStatus = 'going' | 'not_going' | 'maybe';
+
+export interface EventRsvp {
+  userId: Pick<User, '_id' | 'name' | 'email'>;
+  status: RsvpStatus;
+  respondedAt: string;
+}
+
+export interface RsvpCounts {
+  going: number;
+  maybe: number;
+  not_going: number;
+}
+
 export interface CalendarEvent {
   _id: string;
   date: string;
@@ -269,6 +285,9 @@ export interface CalendarEvent {
   description?: string;
   eventType?: string;
   createdBy: Pick<User, '_id' | 'name' | 'email'>;
+  rsvps?: EventRsvp[];
+  rsvpCounts?: RsvpCounts;
+  myRsvpStatus?: RsvpStatus | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -316,3 +335,44 @@ export interface MyInsightsResponse {
   teamSnapshot: MyInsightsTeamSnapshot;
   highlights: MyInsightsHighlights;
 }
+
+// ─── Favorites & Notifications ───────────────
+export type FavoriteUser = Pick<User, '_id' | 'name' | 'email'>;
+
+export interface FavoriteNotification {
+  _id: string;
+  userId: string;
+  type: 'favorite_schedule_update' | 'event_created' | 'event_updated';
+  sourceUser: FavoriteUser;
+  eventId?: string;
+  affectedDates: string[];
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MatchDateClassification =
+  | 'will_be_added'
+  | 'conflict_leave'
+  | 'locked'
+  | 'already_matching'
+  | 'holiday'
+  | 'weekend';
+
+export interface MatchPreviewDate {
+  date: string;
+  classification: MatchDateClassification;
+  favoriteStatus: EffectiveStatus;
+  userStatus: EffectiveStatus;
+  canOverride: boolean;
+  reason?: string;
+}
+
+export interface MatchPreviewResponse {
+  favoriteUser: FavoriteUser;
+  preview: MatchPreviewDate[];
+  lastUpdated: string | null;
+}
+
+export type MatchApplyResult = BulkResult;

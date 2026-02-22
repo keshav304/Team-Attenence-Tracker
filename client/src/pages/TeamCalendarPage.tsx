@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef, Component, type ErrorInfo, type ReactNode } from 'react';
-import { entryApi, holidayApi, statusApi, eventApi, templateApi } from '../api';
+import { entryApi, holidayApi, statusApi, eventApi, templateApi, favoritesApi } from '../api';
 import { useAuth } from '../context/AuthContext';
-import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent, Template, LeaveDuration, HalfDayPortion, WorkingPortion } from '../types';
+import type { TeamMemberData, Holiday, StatusType, EntryDetail, DaySummary, TodayStatusResponse, CalendarEvent, Template, LeaveDuration, HalfDayPortion, WorkingPortion, FavoriteUser } from '../types';
 import {
   getCurrentMonth,
   offsetMonth,
@@ -23,6 +23,7 @@ import {
   Palmtree,
   Home,
   PartyPopper,
+  Star,
 } from 'lucide-react';
 
 import type { LucideIcon } from 'lucide-react';
@@ -127,6 +128,10 @@ const TeamCalendarPage: React.FC = () => {
 
   const [templates, setTemplates] = useState<Template[]>([]);
 
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'team' | 'favorites'>('team');
+  const [togglingFavoriteIds, setTogglingFavoriteIds] = useState<Set<string>>(new Set());
+
   const days = useMemo(() => getDaysInMonth(month), [month]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -143,6 +148,12 @@ const TeamCalendarPage: React.FC = () => {
   const filteredTeam = useMemo(() => {
     try {
       let result = team;
+
+      // Favorites view filter
+      if (viewMode === 'favorites') {
+        result = result.filter((m) => favorites.has(m.user._id));
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         result = result.filter(
@@ -177,7 +188,7 @@ const TeamCalendarPage: React.FC = () => {
       console.error('[TeamCalendar] Filter error:', err);
       return team;
     }
-  }, [team, searchQuery, statusFilter, filterDate, holidays, days]);
+  }, [team, searchQuery, statusFilter, filterDate, holidays, days, viewMode, favorites]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -220,6 +231,19 @@ const TeamCalendarPage: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchTodayStatus(); }, [fetchTodayStatus]);
+
+  // Fetch favorites
+  useEffect(() => {
+    favoritesApi.getFavorites()
+      .then((res) => {
+        if (res.data.success && res.data.data) {
+          setFavorites(new Set(res.data.data.map((f: FavoriteUser) => f._id)));
+        }
+      })
+      .catch(() => {
+        toast.error('Failed to load favorites');
+      });
+  }, []);
 
   useEffect(() => {
     templateApi.getTemplates()
@@ -353,6 +377,25 @@ const TeamCalendarPage: React.FC = () => {
     }
   };
 
+  const handleToggleFavorite = async (memberId: string) => {
+    if (memberId === user?._id) return; // Can't favorite yourself
+    setTogglingFavoriteIds((prev) => new Set(prev).add(memberId));
+    try {
+      const res = await favoritesApi.toggleFavorite(memberId);
+      if (res.data.success && res.data.data) {
+        setFavorites(new Set(res.data.data.favorites));
+      }
+    } catch {
+      toast.error('Failed to update favorite');
+    } finally {
+      setTogglingFavoriteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(memberId);
+        return next;
+      });
+    }
+  };
+
   const buildTooltip = (entry: EntryDetail | undefined, date: string): string => {
     if (holidays[date]) return `🎉 ${holidays[date]}`;
     if (!entry) return 'WFH';
@@ -437,6 +480,31 @@ const TeamCalendarPage: React.FC = () => {
               Today
             </button>
           </div>
+        </div>
+
+        {/* Team / Favorites View Toggle */}
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setViewMode('team')}
+            className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+              viewMode === 'team'
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            Team View
+          </button>
+          <button
+            onClick={() => setViewMode('favorites')}
+            className={`px-3 sm:px-4 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              viewMode === 'favorites'
+                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <Star size={14} className={viewMode === 'favorites' ? 'fill-amber-400 text-amber-400' : ''} />
+            Favorites
+          </button>
         </div>
 
         {/* Today's Status Banner */}
@@ -612,7 +680,9 @@ const TeamCalendarPage: React.FC = () => {
                       colSpan={days.length + 1}
                       className="text-center py-12 text-gray-400 dark:text-gray-500"
                     >
-                      {team.length === 0
+                      {viewMode === 'favorites' && favorites.size === 0
+                        ? "You haven't added any favorite members yet."
+                        : team.length === 0
                         ? 'No team members found'
                         : 'No members match the current filters'}
                     </td>
@@ -628,7 +698,24 @@ const TeamCalendarPage: React.FC = () => {
                       }`}
                     >
                       <td className="sticky left-0 bg-white dark:bg-gray-900/80 backdrop-blur-sm z-10 p-2 sm:p-4">
-                        <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          {/* Favorite star */}
+                          {!isSelf && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleToggleFavorite(member.user._id); }}
+                              disabled={togglingFavoriteIds.has(member.user._id)}
+                              className={`shrink-0 p-0.5 rounded transition-colors ${
+                                favorites.has(member.user._id)
+                                  ? 'text-amber-400 hover:text-amber-500'
+                                  : 'text-gray-300 dark:text-gray-600 hover:text-amber-400 dark:hover:text-amber-400'
+                              }`}
+                              title={favorites.has(member.user._id) ? 'Remove from favorites' : 'Add to favorites'}
+                            >
+                              <Star size={14} className={favorites.has(member.user._id) ? 'fill-amber-400' : ''} />
+                            </button>
+                          )}
+                          {isSelf && <div className="w-[18px] shrink-0" />}
                           <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 shrink-0">
                             {member.user.name.charAt(0).toUpperCase()}
                           </div>

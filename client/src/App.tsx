@@ -12,6 +12,7 @@ import InsightsPage from './pages/InsightsPage';
 import UserInsightsPage from './pages/UserInsightsPage';
 import ProfilePage from './pages/ProfilePage';
 import MyInsightsPage from './pages/MyInsightsPage';
+import EventsPage from './pages/EventsPage';
 
 function App() {
   const { user, isLoading } = useAuth();
@@ -40,6 +41,7 @@ function App() {
         <Route path="/" element={<TeamCalendarPage />} />
         <Route path="/my-calendar" element={<MyCalendarPage />} />
         <Route path="/my-insights" element={<MyInsightsPage />} />
+        <Route path="/events" element={<EventsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         {user.role === 'admin' && (
           <>

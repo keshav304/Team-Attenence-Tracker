@@ -4,7 +4,9 @@ import { getTodayStatus } from '../controllers/statusController.js';
 
 const router = Router();
 
-// Any authenticated user can see today's status
-router.get('/today', authenticate, getTodayStatus);
+// All status routes require authentication
+router.use(authenticate);
+
+router.get('/today', getTodayStatus);
 
 export default router;

@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import User from '../models/User.js';
 import Entry from '../models/Entry.js';
 import Holiday from '../models/Holiday.js';
@@ -11,7 +11,8 @@ import { AuthRequest } from '../types/index.js';
  */
 export const getTodayStatus = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const today = new Date();
@@ -97,7 +98,7 @@ export const getTodayStatus = async (
         wfh,
       },
     });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (error) {
+    next(error);
   }
 };

@@ -1,8 +1,9 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import config from '../config/index.js';
 import { AuthRequest, JwtPayload } from '../types/index.js';
+import { AppError, ErrorCode, Errors } from '../utils/AppError.js';
 
 const generateToken = (user: { _id: string; role: string }): string => {
   const payload: JwtPayload = {
@@ -14,86 +15,94 @@ const generateToken = (user: { _id: string; role: string }): string => {
   } as jwt.SignOptions);
 };
 
-export const register = async (req: Request, res: Response): Promise<void> => {
+export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { name, email, password } = req.body;
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      res.status(400).json({ success: false, message: 'Email already registered' });
-      return;
+    if (!email) {
+      throw Errors.validation('Email is required.');
     }
 
-    const user = await User.create({ name, email, password });
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      throw Errors.emailExists();
+    }
+
+    const user = await User.create({ name, email: normalizedEmail, password });
     const token = generateToken({ _id: user._id.toString(), role: user.role });
 
     res.status(201).json({
       success: true,
       data: {
-        user: user.toJSON(),
         token,
+        user: {
+          id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
       },
     });
-  } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      message: error.message || 'Registration failed',
-    });
+  } catch (error) {
+    next(error);
   }
 };
 
-export const login = async (req: Request, res: Response): Promise<void> => {
+export const login = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      res.status(400).json({ success: false, message: 'Email and password are required' });
-      return;
+      throw Errors.validation('Email and password are required.');
     }
 
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     if (!user || !user.isActive) {
-      res.status(401).json({ success: false, message: 'Invalid credentials' });
-      return;
+      // Never reveal whether the email exists
+      throw Errors.invalidCredentials();
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      res.status(401).json({ success: false, message: 'Invalid credentials' });
-      return;
+      throw Errors.invalidCredentials();
     }
 
     const token = generateToken({ _id: user._id.toString(), role: user.role });
 
-    res.json({
+    _res.json({
       success: true,
       data: {
-        user: user.toJSON(),
         token,
+        user: {
+          id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
       },
     });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Login failed',
-    });
+  } catch (error) {
+    next(error);
   }
 };
 
-export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getMe = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     res.json({
       success: true,
       data: req.user,
     });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (error) {
+    next(error);
   }
 };
 
 export const updateProfile = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { name } = req.body;
@@ -103,36 +112,39 @@ export const updateProfile = async (
       { new: true, runValidators: true }
     );
 
+    if (!user) {
+      throw Errors.notFound('User not found.');
+    }
+
     res.json({ success: true, data: user });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+  } catch (error) {
+    next(error);
   }
 };
 
 export const changePassword = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { currentPassword, newPassword } = req.body;
 
     const user = await User.findById(req.user!._id).select('+password');
     if (!user) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
+      throw Errors.notFound('User not found.');
     }
 
     const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
-      res.status(400).json({ success: false, message: 'Current password is incorrect' });
-      return;
+      throw Errors.invalidCredentials('Current password is incorrect.');
     }
 
     user.password = newPassword;
     await user.save();
 
-    res.json({ success: true, message: 'Password updated successfully' });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    res.json({ success: true, message: 'Password updated successfully.' });
+  } catch (error) {
+    next(error);
   }
 };

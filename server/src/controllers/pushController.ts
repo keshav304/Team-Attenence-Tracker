@@ -1,6 +1,7 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import PushSubscription from '../models/PushSubscription.js';
 import { AuthRequest } from '../types/index.js';
+import { Errors } from '../utils/AppError.js';
 
 /** Allowed preference keys and their expected type (boolean). */
 const PREFERENCE_KEYS = ['teamStatusChanges', 'weeklyReminder', 'adminAnnouncements'] as const;
@@ -28,15 +29,15 @@ function sanitizePreferences(
  */
 export const subscribe = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const userId = req.user!._id;
     const { endpoint, keys, preferences } = req.body;
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
-      res.status(400).json({ success: false, message: 'Invalid push subscription payload' });
-      return;
+      throw Errors.validation('Invalid push subscription payload.');
     }
 
     const sanitizedPreferences = sanitizePreferences(preferences);
@@ -53,9 +54,8 @@ export const subscribe = async (
     );
 
     res.json({ success: true, data: sub });
-  } catch (error: any) {
-    console.error('push subscribe error:', error);
-    res.status(500).json({ success: false, message: 'Failed to save subscription' });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -65,22 +65,27 @@ export const subscribe = async (
  */
 export const unsubscribe = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const userId = req.user!._id;
     const { endpoint } = req.body;
 
     if (!endpoint) {
-      res.status(400).json({ success: false, message: 'Endpoint is required' });
+      throw Errors.validation('Endpoint is required.');
+    }
+
+    const result = await PushSubscription.deleteOne({ userId, endpoint });
+
+    if (result.deletedCount === 0) {
+      res.json({ success: true, message: 'No subscription found.' });
       return;
     }
 
-    await PushSubscription.deleteOne({ userId, endpoint });
-    res.json({ success: true, message: 'Unsubscribed successfully' });
+    res.json({ success: true, message: 'Unsubscribed successfully.' });
   } catch (error) {
-    console.error('push unsubscribe error:', error);
-    res.status(500).json({ success: false, message: 'Failed to unsubscribe' });
+    next(error);
   }
 };
 
@@ -91,7 +96,8 @@ export const unsubscribe = async (
  */
 export const getStatus = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const userId = req.user!._id;
@@ -124,8 +130,7 @@ export const getStatus = async (
       },
     });
   } catch (error) {
-    console.error('push status error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch push status' });
+    next(error);
   }
 };
 
@@ -135,21 +140,20 @@ export const getStatus = async (
  */
 export const updatePreferences = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const userId = req.user!._id;
     const { preferences } = req.body;
 
     if (!preferences || typeof preferences !== 'object' || preferences === null || Array.isArray(preferences)) {
-      res.status(400).json({ success: false, message: 'preferences object is required' });
-      return;
+      throw Errors.validation('Preferences object is required.');
     }
 
     const sanitized = sanitizePreferences(preferences);
     if (!sanitized) {
-      res.status(400).json({ success: false, message: 'No valid preference keys provided' });
-      return;
+      throw Errors.validation('No valid preference keys provided.');
     }
 
     const update: Record<string, boolean> = {};
@@ -162,8 +166,7 @@ export const updatePreferences = async (
     // Fetch updated preferences
     const sub = await PushSubscription.findOne({ userId }).select('preferences');
     if (!sub) {
-      res.status(404).json({ success: false, message: 'No subscriptions found for this user' });
-      return;
+      throw Errors.notFound('No subscriptions found for this user.');
     }
     res.json({
       success: true,
@@ -172,7 +175,6 @@ export const updatePreferences = async (
       },
     });
   } catch (error) {
-    console.error('push updatePreferences error:', error);
-    res.status(500).json({ success: false, message: 'Failed to update preferences' });
+    next(error);
   }
 };

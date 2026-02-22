@@ -1,6 +1,7 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import Holiday from '../models/Holiday.js';
 import { notifyAdminAnnouncement } from '../utils/pushNotifications.js';
+import { Errors } from '../utils/AppError.js';
 
 /**
  * Get holidays for a date range.
@@ -8,7 +9,8 @@ import { notifyAdminAnnouncement } from '../utils/pushNotifications.js';
  */
 export const getHolidays = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { startDate, endDate } = req.query as {
@@ -23,8 +25,8 @@ export const getHolidays = async (
 
     const holidays = await Holiday.find(query).sort({ date: 1 });
     res.json({ success: true, data: holidays });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -34,7 +36,8 @@ export const getHolidays = async (
  */
 export const createHoliday = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { date, name } = req.body;
@@ -48,12 +51,8 @@ export const createHoliday = async (
     );
 
     res.status(201).json({ success: true, data: holiday });
-  } catch (error: any) {
-    if (error.code === 11000) {
-      res.status(409).json({ success: false, message: 'Holiday already exists for this date' });
-      return;
-    }
-    res.status(400).json({ success: false, message: error.message });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -63,7 +62,8 @@ export const createHoliday = async (
  */
 export const updateHoliday = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { id } = req.params;
@@ -76,13 +76,12 @@ export const updateHoliday = async (
     );
 
     if (!holiday) {
-      res.status(404).json({ success: false, message: 'Holiday not found' });
-      return;
+      throw Errors.notFound('Holiday not found.');
     }
 
     res.json({ success: true, data: holiday });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -92,19 +91,19 @@ export const updateHoliday = async (
  */
 export const deleteHoliday = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { id } = req.params;
     const holiday = await Holiday.findByIdAndDelete(id);
 
     if (!holiday) {
-      res.status(404).json({ success: false, message: 'Holiday not found' });
-      return;
+      throw Errors.notFound('Holiday not found.');
     }
 
-    res.json({ success: true, message: 'Holiday deleted' });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    res.json({ success: true, message: 'Holiday deleted.' });
+  } catch (error) {
+    next(error);
   }
 };

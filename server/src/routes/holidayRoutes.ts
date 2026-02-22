@@ -13,12 +13,15 @@ import {
 
 const router = Router();
 
+// All holiday routes require authentication
+router.use(authenticate);
+
 // Anyone authenticated can view holidays
-router.get('/', authenticate, getHolidays);
+router.get('/', getHolidays);
 
 // Only admins can manage holidays
-router.post('/', authenticate, requireAdmin, validateCreateHoliday, createHoliday);
-router.put('/:id', authenticate, requireAdmin, validateUpdateHoliday, updateHoliday);
-router.delete('/:id', authenticate, requireAdmin, deleteHoliday);
+router.post('/', requireAdmin, validateCreateHoliday, createHoliday);
+router.put('/:id', requireAdmin, validateUpdateHoliday, updateHoliday);
+router.delete('/:id', requireAdmin, deleteHoliday);
 
 export default router;

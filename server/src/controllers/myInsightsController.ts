@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import User from '../models/User.js';
 import Entry from '../models/Entry.js';
 import Holiday from '../models/Holiday.js';
@@ -11,7 +11,8 @@ import { toISTDateString } from '../utils/date.js';
  */
 export const getMonthlyInsights = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const monthParam = res.locals.validatedQuery as { month: string };
@@ -259,9 +260,8 @@ export const getMonthlyInsights = async (
         highlights,
       },
     });
-  } catch (error: any) {
-    console.error('getMonthlyInsights error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+  } catch (error) {
+    next(error);
   }
 };
 

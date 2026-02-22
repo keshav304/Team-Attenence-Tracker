@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import User from '../models/User.js';
 import Entry from '../models/Entry.js';
 import Holiday from '../models/Holiday.js';
@@ -138,7 +138,8 @@ async function computeAttendanceStats(
 
 export const getMyPercentage = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const month = Number(req.query.month);
@@ -161,9 +162,8 @@ export const getMyPercentage = async (
         ...stats,
       },
     });
-  } catch (error: any) {
-    console.error('getMyPercentage error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -739,7 +739,8 @@ export async function classifyAndAnswer(
 
 export const chatQuery = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { question } = req.body;
@@ -763,8 +764,7 @@ export const chatQuery = async (
         answer,
       },
     });
-  } catch (error: any) {
-    console.error('chatQuery error:', error);
-    res.status(500).json({ success: false, message: 'Failed to process query' });
+  } catch (error) {
+    next(error);
   }
 };

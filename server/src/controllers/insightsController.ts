@@ -1,9 +1,11 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import User from '../models/User.js';
 import Entry from '../models/Entry.js';
 import Holiday from '../models/Holiday.js';
 import { AuthRequest } from '../types/index.js';
 import { toISTDateString } from '../utils/date.js';
+import { Errors } from '../utils/AppError.js';
+import { computeDateRange, computeWorkingDays, buildEntryMap } from '../utils/insightsHelpers.js';
 
 /**
  * Get insights / analytics for a given month.
@@ -12,15 +14,13 @@ import { toISTDateString } from '../utils/date.js';
  */
 export const getInsights = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { month, year } = res.locals.validatedQuery as { month: number; year: number };
 
-    const mm = String(month).padStart(2, '0');
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const startDate = `${year}-${mm}-01`;
-    const endDate = `${year}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+    const { mm, daysInMonth, startDate, endDate } = computeDateRange(month, year);
 
     // ─── Fetch data in parallel ─────────────────
     const [users, holidays, entries] = await Promise.all([
@@ -34,32 +34,11 @@ export const getInsights = async (
     const holidayList = holidays.map((h) => ({ date: h.date, name: h.name }));
 
     // ─── Compute working days ───────────────────
-    const workingDays: string[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${mm}-${String(d).padStart(2, '0')}`;
-      const dayOfWeek = new Date(year, month - 1, d).getDay();
-      // Exclude weekends (Sat=6, Sun=0) and holidays
-      if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidaySet.has(dateStr)) {
-        workingDays.push(dateStr);
-      }
-    }
+    const workingDays = computeWorkingDays(year, month, mm, daysInMonth, holidaySet);
     const totalWorkingDays = workingDays.length;
 
     // ─── Build entry lookup: userId → date → entry ─
-    const entryMap: Record<string, Record<string, { status: string; startTime?: string; endTime?: string; note?: string; leaveDuration?: string; halfDayPortion?: string; workingPortion?: string }>> = {};
-    entries.forEach((e) => {
-      const uid = e.userId.toString();
-      if (!entryMap[uid]) entryMap[uid] = {};
-      entryMap[uid][e.date] = {
-        status: e.status,
-        startTime: e.startTime,
-        endTime: e.endTime,
-        note: e.note,
-        leaveDuration: e.leaveDuration,
-        halfDayPortion: e.halfDayPortion,
-        workingPortion: e.workingPortion,
-      };
-    });
+    const entryMap = buildEntryMap(entries);
 
     // ─── Day-of-week counters for team aggregates ─
     const dayOfWeekNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -208,9 +187,8 @@ export const getInsights = async (
         dailyOfficeTrend: dailyOfficeCount,
       },
     });
-  } catch (error: any) {
-    console.error('getInsights error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -221,7 +199,8 @@ export const getInsights = async (
  */
 export const getUserInsights = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { userId } = req.params;
@@ -230,14 +209,10 @@ export const getUserInsights = async (
     // Validate user exists
     const user = await User.findById(userId).select('name email role isActive createdAt');
     if (!user) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
+      throw Errors.notFound('User not found.');
     }
 
-    const mm = String(month).padStart(2, '0');
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const startDate = `${year}-${mm}-01`;
-    const endDate = `${year}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+    const { mm, daysInMonth, startDate, endDate } = computeDateRange(month, year);
 
     // Fetch holidays and user entries in parallel
     const [holidays, entries] = await Promise.all([
@@ -250,18 +225,7 @@ export const getUserInsights = async (
     const holidayList = holidays.map((h) => ({ date: h.date, name: h.name }));
 
     // Build entry lookup: date → entry
-    const entryMap: Record<string, { status: string; startTime?: string; endTime?: string; note?: string; leaveDuration?: string; halfDayPortion?: string; workingPortion?: string }> = {};
-    entries.forEach((e) => {
-      entryMap[e.date] = {
-        status: e.status,
-        startTime: e.startTime,
-        endTime: e.endTime,
-        note: e.note,
-        leaveDuration: e.leaveDuration,
-        halfDayPortion: e.halfDayPortion,
-        workingPortion: e.workingPortion,
-      };
-    });
+    const userEntryMap = buildEntryMap(entries)[userId] || {};
 
     // Determine user's effective start (in case they joined mid-month)
     const userCreated = user.createdAt
@@ -301,7 +265,7 @@ export const getUserInsights = async (
       const isBeforeJoin = dateStr < userCreated;
       const holiday = isHoliday ? holidays.find((h) => h.date === dateStr) : undefined;
 
-      const entry = entryMap[dateStr];
+      const entry = userEntryMap[dateStr];
 
       let effectiveStatus: 'office' | 'leave' | 'wfh' | 'holiday' | 'weekend' | 'not-joined' | 'half-day-leave';
       if (isWeekend) {
@@ -385,9 +349,8 @@ export const getUserInsights = async (
         dailyBreakdown,
       },
     });
-  } catch (error: any) {
-    console.error('getUserInsights error:', error);
-    res.status(500).json({ success: false, message: 'Internal server error' });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -398,15 +361,13 @@ export const getUserInsights = async (
  */
 export const exportInsightsCsv = async (
   req: AuthRequest,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { month, year } = res.locals.validatedQuery as { month: number; year: number };
 
-    const mm = String(month).padStart(2, '0');
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const startDate = `${year}-${mm}-01`;
-    const endDate = `${year}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+    const { mm, daysInMonth, startDate, endDate } = computeDateRange(month, year);
 
     const [users, holidays, entries] = await Promise.all([
       User.find({ isActive: true }).select('name email role createdAt').sort({ name: 1 }),
@@ -417,26 +378,10 @@ export const exportInsightsCsv = async (
     const holidaySet = new Set(holidays.map((h) => h.date));
 
     // Compute working days
-    const workingDays: string[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${mm}-${String(d).padStart(2, '0')}`;
-      const dayOfWeek = new Date(year, month - 1, d).getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidaySet.has(dateStr)) {
-        workingDays.push(dateStr);
-      }
-    }
+    const workingDays = computeWorkingDays(year, month, mm, daysInMonth, holidaySet);
 
     // Build entry lookup
-    const entryMap: Record<string, Record<string, { status: string; leaveDuration?: string; workingPortion?: string }>> = {};
-    entries.forEach((e) => {
-      const uid = e.userId.toString();
-      if (!entryMap[uid]) entryMap[uid] = {};
-      entryMap[uid][e.date] = {
-        status: e.status,
-        leaveDuration: e.leaveDuration,
-        workingPortion: e.workingPortion,
-      };
-    });
+    const entryMap = buildEntryMap(entries);
 
     // CSV header
     const csvRows: string[] = [
@@ -489,8 +434,7 @@ export const exportInsightsCsv = async (
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csvContent);
-  } catch (error: any) {
-    console.error('exportInsightsCsv error:', error);
-    res.status(500).json({ success: false, message: 'Failed to export CSV' });
+  } catch (error) {
+    next(error);
   }
 };

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
 import NotificationBell from './NotificationBell';
+import FavoritesNotificationPanel from './FavoritesNotificationPanel';
 
 const ChatAssistant = lazy(() => import('./ChatAssistant'));
 
@@ -10,6 +11,7 @@ const PAGE_NAMES: Record<string, string> = {
   '/': 'Team Calendar',
   '/my-calendar': 'My Calendar',
   '/my-insights': 'My Insights',
+  '/events': 'Events',
   '/profile': 'Profile',
   '/admin/users': 'Admin Users',
   '/admin/holidays': 'Admin Holidays',
@@ -22,6 +24,7 @@ const NAV_ICONS: Record<string, string> = {
   '/': '📅',
   '/my-calendar': '🗓️',
   '/my-insights': '✨',
+  '/events': '🎯',
   '/profile': '👤',
   '/admin/users': '👥',
   '/admin/holidays': '🎉',
@@ -42,11 +45,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     { to: '/', label: 'Team View' },
     { to: '/my-calendar', label: 'My Calendar' },
     { to: '/my-insights', label: 'My Insights' },
+    { to: '/events', label: 'Events' },
     ...(isAdmin
       ? [
           { to: '/admin/users', label: 'Users' },
           { to: '/admin/holidays', label: 'Holidays' },
-          { to: '/admin/events', label: 'Events' },
+          { to: '/admin/events', label: 'Manage Events' },
           { to: '/admin/insights', label: 'Insights' },
           { to: '/admin/user-insights', label: 'Employee' },
         ]
@@ -128,6 +132,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
             {/* Right: User controls */}
             <div className="flex items-center gap-2 sm:gap-3">
+              <FavoritesNotificationPanel />
               <NotificationBell />
               <ThemeToggle />
               <Link

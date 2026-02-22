@@ -1,8 +1,9 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { embedText } from '../utils/embeddings.js';
 import config from '../config/index.js';
 import { AuthRequest } from '../types/index.js';
+import { Errors } from '../utils/AppError.js';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -222,35 +223,23 @@ async function searchDocs(queryVector: number[]): Promise<DocChunk[]> {
 /*  Controller                                                        */
 /* ------------------------------------------------------------------ */
 
-export const chat = async (req: Request, res: Response): Promise<void> => {
+export const chat = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     /* 1 ── Validate input ------------------------------------------- */
     const rawQuestion: unknown = req.body?.question;
 
     if (!rawQuestion || typeof rawQuestion !== 'string') {
-      res.status(400).json({
-        success: false,
-        message: 'A non-empty "question" string is required.',
-      });
-      return;
+      throw Errors.validation('A non-empty "question" string is required.');
     }
 
     const question = sanitise(rawQuestion);
 
     if (question.length === 0) {
-      res.status(400).json({
-        success: false,
-        message: 'Question must not be empty after trimming.',
-      });
-      return;
+      throw Errors.validation('Question must not be empty after trimming.');
     }
 
     if (question.length > MAX_QUESTION_LENGTH) {
-      res.status(400).json({
-        success: false,
-        message: `Question exceeds the maximum length of ${MAX_QUESTION_LENGTH} characters.`,
-      });
-      return;
+      throw Errors.validation(`Question exceeds the maximum length of ${MAX_QUESTION_LENGTH} characters.`);
     }
 
     /* 1b ── Try data-aware analytics handler first ------------------ */
@@ -275,12 +264,8 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     try {
       queryVector = await embedText(question);
     } catch (embErr) {
-      console.error('Chat: embedding failed:', embErr);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to process the question (embedding error).',
-      });
-      return;
+      console.error('Chat: embedText failed:', embErr);
+      throw Errors.serviceUnavailable('Failed to process the question (embedding error).');
     }
 
     /* 3 ── MongoDB Atlas Vector Search ------------------------------ */
@@ -288,12 +273,8 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     try {
       chunks = await searchDocs(queryVector);
     } catch (searchErr) {
-      console.error('Chat: vector search failed:', searchErr);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to search the documentation.',
-      });
-      return;
+      console.error('Chat: searchDocs failed:', searchErr);
+      throw Errors.serviceUnavailable('Failed to search the documentation.');
     }
 
     /* 4 ── Handle no results ---------------------------------------- */
@@ -318,22 +299,13 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
       answer = await generateAnswer(prompt);
     } catch (llmErr) {
       const errMsg = llmErr instanceof Error ? llmErr.message : String(llmErr);
-      console.error('Chat: LLM generation failed:', llmErr);
 
       // Help users fix the most common cause: missing API key
       if (errMsg.includes('OPENROUTER_API_KEY') && errMsg.includes('not configured')) {
-        res.status(503).json({
-          success: false,
-          message: 'Chat is not configured. Set OPENROUTER_API_KEY in server/.env (get a key at https://openrouter.ai/keys).',
-        });
-        return;
+        throw Errors.serviceUnavailable('Chat is not configured. Set OPENROUTER_API_KEY in server/.env (get a key at https://openrouter.ai/keys).');
       }
 
-      res.status(500).json({
-        success: false,
-        message: 'Failed to generate an answer. Please try again.',
-      });
-      return;
+      throw Errors.aiUnavailable('Failed to generate an answer. Please try again.');
     }
 
     if (!answer) {
@@ -358,10 +330,6 @@ export const chat = async (req: Request, res: Response): Promise<void> => {
     /* 8 ── Return structured response ------------------------------- */
     res.json({ answer, sources });
   } catch (error) {
-    console.error('Chat endpoint error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'An internal error occurred while processing your question.',
-    });
+    next(error);
   }
 };

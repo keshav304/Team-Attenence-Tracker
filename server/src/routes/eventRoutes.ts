@@ -4,6 +4,7 @@ import {
   createEvent,
   updateEvent,
   deleteEvent,
+  rsvpToEvent,
 } from '../controllers/eventController.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import {
@@ -19,6 +20,9 @@ router.use(authenticate);
 
 // Any user can view events
 router.get('/', getEvents);
+
+// Any authenticated user can RSVP
+router.post('/:id/rsvp', validateEventId, rsvpToEvent);
 
 // Admin-only: create, update, delete
 router.post('/', requireAdmin, validateCreateEvent, createEvent);

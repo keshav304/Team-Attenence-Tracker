@@ -1,4 +1,5 @@
 import api from './client';
+export { getErrorMessage } from './client';
 import type {
   ApiResponse,
   AuthResponse,
@@ -24,6 +25,10 @@ import type {
   LeaveDuration,
   HalfDayPortion,
   WorkingPortion,
+  FavoriteUser,
+  FavoriteNotification,
+  MatchPreviewResponse,
+  MatchApplyResult,
 } from '../types';
 
 /** Half-day leave fields shared across entry API methods */
@@ -205,6 +210,9 @@ export const eventApi = {
 
   deleteEvent: (id: string) =>
     api.delete<ApiResponse>(`/events/${id}`),
+
+  rsvp: (eventId: string, status: 'going' | 'not_going' | 'maybe') =>
+    api.post<ApiResponse<CalendarEvent>>(`/events/${eventId}/rsvp`, { status }),
 };
 
 // ─── Analytics ───────────────────────────────
@@ -244,4 +252,45 @@ export const pushApi = {
 
   updatePreferences: (preferences: PushPreferences) =>
     api.put<ApiResponse>('/push/preferences', { preferences }),
+};
+
+// ─── Favorites ───────────────────────────────
+export const favoritesApi = {
+  getFavorites: () =>
+    api.get<ApiResponse<FavoriteUser[]>>('/users/favorites'),
+
+  toggleFavorite: (userId: string) =>
+    api.post<ApiResponse<{ favorites: string[]; action: 'added' | 'removed' }>>(`/users/favorites/${userId}`),
+};
+
+// ─── Notifications ───────────────────────────
+export const notificationsApi = {
+  getAll: () =>
+    api.get<ApiResponse<FavoriteNotification[]>>('/notifications'),
+
+  getUnreadCount: () =>
+    api.get<ApiResponse<{ count: number }>>('/notifications/unread-count'),
+
+  markAsRead: (id: string) =>
+    api.put<ApiResponse>(`/notifications/${id}/read`),
+
+  markAllAsRead: () =>
+    api.put<ApiResponse>('/notifications/read-all'),
+};
+
+// ─── Schedule Matching ───────────────────────
+export const scheduleApi = {
+  matchPreview: (favoriteUserId: string, startDate: string, endDate: string) =>
+    api.post<ApiResponse<MatchPreviewResponse>>('/schedule/match-preview', {
+      favoriteUserId,
+      startDate,
+      endDate,
+    }),
+
+  matchApply: (favoriteUserId: string, dates: string[], overrideLeave: boolean) =>
+    api.post<ApiResponse<MatchApplyResult>>('/schedule/match-apply', {
+      favoriteUserId,
+      dates,
+      overrideLeave,
+    }),
 };
