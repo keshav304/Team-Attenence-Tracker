@@ -133,7 +133,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* Right: User controls */}
             <div className="flex items-center gap-2 sm:gap-3">
               <FavoritesNotificationPanel />
-              <NotificationBell />
+              {/* <NotificationBell /> */}
               <ThemeToggle />
               <Link
                 to="/profile"
