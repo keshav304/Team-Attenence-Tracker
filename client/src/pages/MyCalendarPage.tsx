@@ -61,6 +61,7 @@ const MyCalendarPage: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<string | null>(null);
   const mouseIsDown = useRef(false);
+  const dragOccurredRef = useRef(false);
   const calendarRef = useRef<HTMLDivElement>(null);
   const calendarAreaRef = useRef<HTMLDivElement>(null);
 
@@ -146,6 +147,7 @@ const MyCalendarPage: React.FC = () => {
   const handleMouseDown = (date: string) => {
     if (!isSelectable(date)) return;
     mouseIsDown.current = true;
+    dragOccurredRef.current = false;
     setDragStart(date);
     setSelectedDates([date]);
     // Don't set isDragging yet — only transition to drag on mouse-enter of a different cell
@@ -156,6 +158,7 @@ const MyCalendarPage: React.FC = () => {
     // Only start dragging when the cursor actually moves to a different cell
     if (date !== dragStart) {
       setIsDragging(true);
+      dragOccurredRef.current = true;
     }
     if (isDragging || date !== dragStart) {
       setSelectedDates(getDatesInRange(dragStart, date));
@@ -549,8 +552,9 @@ const MyCalendarPage: React.FC = () => {
                       }}
                       onMouseEnter={() => handleMouseEnter(date)}
                       onMouseUp={() => {
+                        const wasDrag = dragOccurredRef.current;
                         handleMouseUp();
-                        if (canEdit && selectedDates.length <= 1 && dragStart === date) {
+                        if (canEdit && selectedDates.length <= 1 && dragStart === date && !wasDrag) {
                           openModal(date);
                         }
                       }}
