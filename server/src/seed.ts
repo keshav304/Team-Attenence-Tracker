@@ -16,19 +16,6 @@ const seed = async () => {
     await User.deleteMany({});
     await Holiday.deleteMany({});
 
-    // Create admin user
-    const admin = await User.create({
-      name: 'Admin User',
-      email: 'admin@team.com',
-      password: 'admin123',
-      role: 'admin',
-    });
-
-    // Create team members
-    const members = await User.create([
-      { name: 'Keshav Jha', email: 'keshav.jha@dunnhumby.com', password: 'password123' },
-    ]);
-
     // Create some holidays for 2026
     await Holiday.create([
       { date: '2026-01-01', name: 'New Year\'s Day' },
