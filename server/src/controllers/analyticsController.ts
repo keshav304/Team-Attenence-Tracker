@@ -347,7 +347,7 @@ function formatAsISO(d: Date): string {
 function extractPersonName(question: string): string | null {
   const q = question.toLowerCase();
 
-  // Patterns like "is Bala on leave", "when is Ankit coming", "is Ankit in office"
+  // Patterns like "is john on leave", "when is Ankit coming", "is Ankit in office"
   const patterns = [
     /\bis\s+(\w+)\s+(on|in|coming|going)/i,
     /\bwhen\s+is\s+(\w+)\s+(coming|going|in)/i,
@@ -524,10 +524,6 @@ async function handleTeamPresence(question: string): Promise<string> {
     // For single-day queries
     if (workingDays.length === 1) {
       const date = workingDays[0];
-      const entryMap = new Map<string, string>();
-      entries.forEach((e) => {
-        if (e.date === date) entryMap.set(e.userId.toString(), e.status);
-      });
 
       const officeUsers: string[] = [];
       const leaveUsers: string[] = [];
@@ -701,12 +697,13 @@ async function handleEventQuery(question: string): Promise<string> {
  */
 export async function classifyAndAnswer(
   question: string,
-  user: { _id: any; name: string }
+  user: { _id: any; name: string },
+  precomputedIntent?: Intent
 ): Promise<string | null> {
   let intent: Intent = 'unknown';
   try {
     const q = question.trim();
-    intent = classifyIntent(q);
+    intent = precomputedIntent ?? classifyIntent(q);
 
     switch (intent) {
       case 'personal_attendance':
@@ -755,7 +752,7 @@ export const chatQuery = async (
     const answer = await classifyAndAnswer(q, {
       _id: req.user!._id,
       name: req.user!.name,
-    });
+    }, intent);
 
     res.json({
       success: true,

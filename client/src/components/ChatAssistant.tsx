@@ -6,7 +6,7 @@ import React, {
   type KeyboardEvent,
   type FormEvent,
 } from 'react';
-import { chatApi, type ChatResponse } from '../api';
+import { chatApi, type ChatResponse, type ChatHistoryMessage } from '../api';
 import VoiceInput from './VoiceInput';
 import Workbot from './Workbot';
 
@@ -41,9 +41,9 @@ const SUGGESTED_QUESTIONS = [
   'What is my office percentage this month?',
   'Who is in office today?',
   'Which day next week has the highest attendance?',
-  'Is there any event next Friday?',
-  'How do I mark leave?',
-  'What does WFH mean?',
+  'Compare my and John\'s office days this month',
+  'Suggest the best day to avoid overlap with John next month',
+  'Am I below the team average for office attendance?',
 ];
 
 /* ------------------------------------------------------------------ */
@@ -251,7 +251,13 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
       setIsLoading(true);
 
       try {
-        const res = await chatApi.ask(trimmed);
+        // Build conversation history from recent messages (last 3 pairs)
+        const history: ChatHistoryMessage[] = messages
+          .filter((m) => !m.error)
+          .slice(-6)
+          .map((m) => ({ role: m.role, text: m.text }));
+
+        const res = await chatApi.ask(trimmed, history.length > 0 ? history : undefined);
         const data = res.data;
 
         const assistantMsg: Message = {
@@ -289,7 +295,7 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
         setIsLoading(false);
       }
     },
-    [isLoading]
+    [isLoading, messages]
   );
 
   const handleSubmit = (e: FormEvent) => {

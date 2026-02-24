@@ -220,8 +220,8 @@ export interface TodayStatusResponse {
 export type WorkbotStatus = StatusType | 'clear';
 
 export type WorkbotAction =
-  | { type: 'set'; status: WorkbotStatus; dateExpressions: string[]; note?: string }
-  | { type: 'clear'; dateExpressions: string[]; note?: string };
+  | { type: 'set'; status: WorkbotStatus; dateExpressions: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh' }
+  | { type: 'clear'; dateExpressions: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh' };
 
 export interface WorkbotPlan {
   actions: WorkbotAction[];

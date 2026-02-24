@@ -177,9 +177,14 @@ export interface ChatResponse {
   sources: { page: number; source: string }[];
 }
 
+export interface ChatHistoryMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
 export const chatApi = {
-  ask: (question: string) =>
-    api.post<ChatResponse>('/chat', { question }),
+  ask: (question: string, history?: ChatHistoryMessage[]) =>
+    api.post<ChatResponse>('/chat', { question, history }),
 };
 
 // ─── Workbot ─────────────────────────────────

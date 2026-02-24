@@ -159,31 +159,36 @@ async function generateAnswer(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Data-aware analytics (inline helper)                              */
+/*  Data-aware analytics — V2 pipeline (Stages 0–7)                   */
 /* ------------------------------------------------------------------ */
 
-// Cache the dynamic import so classifyAndAnswer is loaded once
-let _classifyAndAnswer: typeof import('./analyticsController.js')['classifyAndAnswer'] | null = null;
+// Cache the dynamic import to avoid circular deps
+let _processQuestion: typeof import('./chatPipeline.js')['processQuestion'] | null = null;
 
-async function getClassifyAndAnswer() {
-  if (!_classifyAndAnswer) {
-    const mod = await import('./analyticsController.js');
-    _classifyAndAnswer = mod.classifyAndAnswer;
+async function getProcessQuestion(): Promise<typeof import('./chatPipeline.js')['processQuestion']> {
+  if (!_processQuestion) {
+    const mod = await import('./chatPipeline.js');
+    if (!mod.processQuestion) {
+      throw new Error('processQuestion import missing from chatPipeline');
+    }
+    _processQuestion = mod.processQuestion;
   }
-  return _classifyAndAnswer;
+  return _processQuestion;
 }
 
 /**
- * Attempt to answer the user's question via the analytics handler.
- * Returns the answer string, or null if the query is not data-related
- * (i.e. should fall through to RAG).
+ * Attempt to answer the user's question via the V2 chat pipeline.
+ * The pipeline handles both simple (fast path) and complex (LLM path) queries.
+ * Returns the answer string, or null if the query should fall through to RAG.
  */
 async function tryAnalyticsQuery(
   question: string,
-  user: { _id: any; name: string }
+  user: { _id: any; name: string },
+  history?: { role: 'user' | 'assistant'; text: string }[]
 ): Promise<string | null> {
-  const classifyAndAnswer = await getClassifyAndAnswer();
-  return classifyAndAnswer(question, user);
+  const processQuestion = await getProcessQuestion();
+  const result = await processQuestion({ question, user, history });
+  return result.answer;
 }
 
 /* ------------------------------------------------------------------ */
@@ -242,20 +247,39 @@ export const chat = async (req: Request, res: Response, next: NextFunction): Pro
       throw Errors.validation(`Question exceeds the maximum length of ${MAX_QUESTION_LENGTH} characters.`);
     }
 
-    /* 1b ── Try data-aware analytics handler first ------------------ */
+    /* 1b ── Try data-aware analytics pipeline (V2) ------------------- */
     const authReq = req as AuthRequest;
     if (authReq.user) {
       try {
-        const analyticsResult = await tryAnalyticsQuery(question, {
-          _id: authReq.user._id,
-          name: authReq.user.name,
-        });
+        // Accept optional conversation history from the client
+        const rawHistory: unknown = req.body?.history;
+        const history = Array.isArray(rawHistory)
+          ? rawHistory
+              .filter(
+                (h: any) =>
+                  h &&
+                  typeof h.role === 'string' &&
+                  typeof h.text === 'string' &&
+                  (h.role === 'user' || h.role === 'assistant'),
+              )
+              .slice(-6) // Cap at 3 turns (6 messages)
+              .map((h: any) => ({
+                role: h.role as 'user' | 'assistant',
+                text: sanitise(h.text).slice(0, MAX_QUESTION_LENGTH),
+              }))
+          : undefined;
+
+        const analyticsResult = await tryAnalyticsQuery(
+          question,
+          { _id: authReq.user._id, name: authReq.user.name },
+          history,
+        );
         if (analyticsResult) {
           res.json({ answer: analyticsResult, sources: [] });
           return;
         }
       } catch (err) {
-        console.warn('Chat: analytics handler failed, falling through to RAG:', err);
+        console.warn('Chat: pipeline handler failed, falling through to RAG:', err);
       }
     }
 
