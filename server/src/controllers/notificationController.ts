@@ -98,22 +98,48 @@ export const markAllAsRead = async (
   }
 };
 
+/** The kind of schedule change that triggered a favourite notification. */
+export type FavoriteChangeKind = 'added' | 'updated' | 'removed';
+
+/**
+ * Build a human-readable notification message.
+ */
+const buildFavoriteMessage = (
+  sourceName: string,
+  dateCount: number,
+  kind: FavoriteChangeKind,
+): string => {
+  const dayWord = `office day${dateCount > 1 ? 's' : ''}`;
+  switch (kind) {
+    case 'added':
+      return `${sourceName} added ${dateCount} ${dayWord}. Want to align?`;
+    case 'updated':
+      return `${sourceName} updated ${dateCount} ${dayWord}. Review your alignment.`;
+    case 'removed':
+      return `${sourceName} removed ${dateCount} ${dayWord}. You may want to update yours.`;
+  }
+};
+
 /**
  * Create favorite schedule update notifications.
- * Called internally when a user adds office days.
+ * Called internally when a user changes office days.
  * NOT an API endpoint — used by entry controller.
+ *
+ * @param kind – 'added' first time setting office, 'updated' editing an
+ *   existing office entry, 'removed' changing away from office or deleting.
  */
 export const createFavoriteNotifications = async (
   sourceUserId: string,
   sourceName: string,
-  officeDates: string[]
+  officeDates: string[],
+  kind: FavoriteChangeKind = 'added',
 ): Promise<void> => {
   try {
     if (officeDates.length === 0) return;
 
     const BATCH_SIZE = 500;
     const dateCount = officeDates.length;
-    const message = `${sourceName} added ${dateCount} office day${dateCount > 1 ? 's' : ''}. Want to align?`;
+    const message = buildFavoriteMessage(sourceName, dateCount, kind);
 
     if (!mongoose.isValidObjectId(sourceUserId)) {
       console.warn('createFavoriteNotifications: invalid sourceUserId, skipping', sourceUserId);
