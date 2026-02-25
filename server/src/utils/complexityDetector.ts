@@ -28,6 +28,7 @@ export type ComplexIntent =
   | 'meeting_plan'
   | 'trend'
   | 'multi_person_coordination'
+  | 'team_analytics'
   | 'clarify_needed'
   | 'out_of_scope'
   | 'explain_previous';
@@ -70,8 +71,16 @@ export function classifyIntent(question: string): SimpleIntent {
 
   // Team analytics (aggregated)
   if (
-    /\b(most|least|highest|lowest|busiest|peak|which day|how many people|how many employees|maximum|minimum|everyone|all)\b/i.test(q) &&
-    /\b(office|attendance|presence|in office|coming)\b/i.test(q)
+    /\b(most|least|highest|lowest|busiest|peak|which day|which weekday|how many people|how many employees|maximum|minimum|everyone|all|crowded|most crowded|quietest)\b/i.test(q) &&
+    /\b(office|attendance|presence|in office|coming|crowded|busy|quiet|week|monday|tuesday|wednesday|thursday|friday)\b/i.test(q)
+  ) {
+    return 'team_analytics';
+  }
+
+  // Team analytics — period comparison ("compare first half vs second half")
+  if (
+    /\b(compare|vs\.?|versus)\b/i.test(q) &&
+    /\b(first half|second half|half)\b/i.test(q)
   ) {
     return 'team_analytics';
   }
@@ -121,7 +130,7 @@ const COMPLEXITY_SIGNALS: ComplexitySignal[] = [
   // Simulation keywords
   {
     name: 'simulation',
-    pattern: /\b(if I\s+go|what if|suppose|assuming|hypothetically|if I\s+went|would I|will I have)\b/i,
+    pattern: /\b(if I\s+go|what if|suppose|assuming|hypothetically|if I\s+went|would I|will I have|if we\b|if everyone|if \w+\s+(?:skip|shift|add|remove|cancel)|if the|redistribute)\b/i,
   },
   // Comparative keywords
   {
@@ -190,6 +199,24 @@ export function routeQuestion(question: string): RoutingDecision {
   const simpleIntent = classifyIntent(question);
   const signals = checkComplexitySignals(question);
   const isComplex = signals.length > 0;
+
+  // team_analytics questions are handled well by the fast path even when
+  // comparative/team_avg_comparison signals fire (e.g. "highest average
+  // attendance" contains "average" which triggers team_avg_comparison,
+  // but the query is aggregate team analytics, not personal vs team avg).
+  // HOWEVER: if simulation signals fire, we MUST use the slow path
+  // because hypothetical questions need LLM extraction.
+  if (simpleIntent === 'team_analytics' && isComplex) {
+    const safeSignals = new Set(['comparative', 'team_avg_comparison']);
+    const unsafeSignals = signals.filter(s => !safeSignals.has(s));
+    if (unsafeSignals.length === 0) {
+      return { path: 'fast', simpleIntent, isComplex: false, signals };
+    }
+    // If simulation signal is present → always use slow path
+    if (signals.includes('simulation')) {
+      return { path: 'slow', simpleIntent, isComplex, signals };
+    }
+  }
 
   if (simpleIntent !== 'unknown' && !isComplex) {
     return { path: 'fast', simpleIntent, isComplex, signals };

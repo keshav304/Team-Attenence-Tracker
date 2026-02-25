@@ -39,18 +39,29 @@ export type LLMProvider = 'openrouter' | 'nvidia';
 
 /**
  * OpenRouter free-tier models (tried in order).
+ * Benchmarked 2026-02-25 — ordered by speed + reliability.
+ *
+ *  #  Model                                  Avg ms   Reliability
+ *  1  arcee-ai/trinity-large-preview          975     3/3  ← fastest, clean output
+ *  2  nvidia/nemotron-3-nano-30b-a3b        1,094     3/3
+ *  3  upstage/solar-pro-3                   1,610     3/3  ← good JSON
+ *  4  nvidia/nemotron-nano-9b-v2            1,909     3/3
+ *  5  arcee-ai/trinity-mini                 3,978     3/3  ← inconsistent spikes
+ *  6  stepfun/step-3.5-flash                5,737     3/3  ← slow fallback
+ *  7  z-ai/glm-4.5-air                     6,284     3/3  ← slow fallback
+ *  8+ llama-3.3-70b / gemma — rate-limited during benchmark, kept as last resort
  */
 const OPENROUTER_MODELS = [
-  'openai/gpt-oss-120b:free',
-  'arcee-ai/trinity-large-preview:free',
-  'stepfun/step-3.5-flash:free',
-  'z-ai/glm-4.5-air:free',
-  'nvidia/nemotron-3-nano-30b-a3b:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-3-27b-it:free',
-  'upstage/solar-pro-3:free',
-  'arcee-ai/trinity-mini:free',
-  'google/gemma-3-12b-it:free',
+  'arcee-ai/trinity-large-preview:free',               // ~1s avg, fastest, clean output
+  'nvidia/nemotron-3-nano-30b-a3b:free',               // ~1.1s avg, fast & reliable
+  'upstage/solar-pro-3:free',                          // ~1.6s avg, good JSON extraction
+  'nvidia/nemotron-nano-9b-v2:free',                   // ~1.9s avg, lightweight
+  'arcee-ai/trinity-mini:free',                        // ~4s avg, inconsistent but works
+  'stepfun/step-3.5-flash:free',                       // ~5.7s avg, slow fallback
+  'z-ai/glm-4.5-air:free',                            // ~6.3s avg, slow fallback
+  'meta-llama/llama-3.3-70b-instruct:free',            // rate-limited, last resort
+  'google/gemma-3-27b-it:free',                        // rate-limited, last resort
+  'google/gemma-3-12b-it:free',                        // rate-limited, last resort
 ];
 
 /**

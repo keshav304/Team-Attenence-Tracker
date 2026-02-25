@@ -212,8 +212,16 @@ function classifyIntent(question: string): Intent {
 
   // Team analytics (aggregated)
   if (
-    /\b(most|least|highest|lowest|busiest|peak|which day|how many people|how many employees|maximum|minimum|everyone|all)\b/.test(q) &&
-    /\b(office|attendance|presence|in office|coming)\b/.test(q)
+    /\b(most|least|highest|lowest|busiest|peak|which day|which weekday|how many people|how many employees|maximum|minimum|everyone|all|crowded|most crowded|quietest)\b/.test(q) &&
+    /\b(office|attendance|presence|in office|coming|crowded|busy|quiet|week|monday|tuesday|wednesday|thursday|friday)\b/.test(q)
+  ) {
+    return 'team_analytics';
+  }
+
+  // Team analytics — period comparison ("compare first half vs second half")
+  if (
+    /\b(compare|vs\.?|versus)\b/.test(q) &&
+    /\b(first half|second half|half)\b/.test(q)
   ) {
     return 'team_analytics';
   }
@@ -611,6 +619,147 @@ async function handleTeamAnalytics(question: string): Promise<string> {
   for (const d of workingDays) {
     const count = entryByDate.get(d)?.size || 0;
     dailyCounts.push({ date: d, count });
+  }
+
+  /* ── Helper: get weekday index (0=Sun…6=Sat) from YYYY-MM-DD ──── */
+  function getDow(dateStr: string): number {
+    const { year, month, day } = parseDateStr(dateStr);
+    return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  }
+
+  const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  /* ── Detect specific weekday mentioned in the question ──────────── */
+  const weekdayMatch = q.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/);
+  const targetWeekday = weekdayMatch
+    ? ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].indexOf(weekdayMatch[1])
+    : -1;
+
+  /* ── Period comparison: "compare first half vs second half" ─────── */
+  if (/\b(compare|vs\.?|versus)\b/.test(q) && /\b(first half|second half|half)\b/.test(q)) {
+    const mid = Math.ceil(workingDays.length / 2);
+    const firstHalf = dailyCounts.slice(0, mid);
+    const secondHalf = dailyCounts.slice(mid);
+
+    const firstTotal = firstHalf.reduce((s, d) => s + d.count, 0);
+    const secondTotal = secondHalf.reduce((s, d) => s + d.count, 0);
+    const firstAvg = firstHalf.length > 0 ? (firstTotal / firstHalf.length).toFixed(1) : '0';
+    const secondAvg = secondHalf.length > 0 ? (secondTotal / secondHalf.length).toFixed(1) : '0';
+    const firstPeak = [...firstHalf].sort((a, b) => b.count - a.count)[0];
+    const secondPeak = [...secondHalf].sort((a, b) => b.count - a.count)[0];
+
+    const firstRange = `${formatDateNice(firstHalf[0].date)} – ${formatDateNice(firstHalf[firstHalf.length - 1].date)}`;
+    const secondRange = `${formatDateNice(secondHalf[0].date)} – ${formatDateNice(secondHalf[secondHalf.length - 1].date)}`;
+
+    let verdict = '';
+    if (Number(firstAvg) > Number(secondAvg)) {
+      verdict = 'The first half has higher average office attendance.';
+    } else if (Number(secondAvg) > Number(firstAvg)) {
+      verdict = 'The second half has higher average office attendance.';
+    } else {
+      verdict = 'Both halves have the same average office attendance.';
+    }
+
+    return `Office attendance comparison ${label}:\n\n` +
+      `**First half** (${firstRange}, ${firstHalf.length} days):\n` +
+      `• Total: ${firstTotal} person-days\n` +
+      `• Average: ${firstAvg}/day\n` +
+      `• Peak: ${firstPeak.count} on ${formatDateNice(firstPeak.date)}\n\n` +
+      `**Second half** (${secondRange}, ${secondHalf.length} days):\n` +
+      `• Total: ${secondTotal} person-days\n` +
+      `• Average: ${secondAvg}/day\n` +
+      `• Peak: ${secondPeak.count} on ${formatDateNice(secondPeak.date)}\n\n` +
+      verdict;
+  }
+
+  /* ── Weekday aggregation: "which weekday has highest/lowest avg" ── */
+  if (/\b(weekday|which day)\b/.test(q) && /\b(average|highest|lowest|most|least)\b/.test(q)) {
+    // Aggregate by day of week
+    const weekdayStats: Record<number, { total: number; count: number }> = {};
+    for (const dc of dailyCounts) {
+      const dow = getDow(dc.date);
+      if (!weekdayStats[dow]) weekdayStats[dow] = { total: 0, count: 0 };
+      weekdayStats[dow].count++;
+      weekdayStats[dow].total += dc.count;
+    }
+
+    const avgByDay: { day: string; dow: number; avg: number; total: number; occurrences: number }[] = [];
+    for (const [dowStr, stats] of Object.entries(weekdayStats)) {
+      const dow = Number(dowStr);
+      const avg = stats.count > 0 ? Math.round((stats.total / stats.count) * 10) / 10 : 0;
+      avgByDay.push({ day: WEEKDAY_NAMES[dow], dow, avg, total: stats.total, occurrences: stats.count });
+    }
+
+    // Sort by average descending
+    avgByDay.sort((a, b) => b.avg - a.avg);
+
+    const isLowest = /\b(lowest|least|fewest|minimum)\b/.test(q);
+    if (isLowest) avgByDay.reverse();
+
+    const top = avgByDay[0];
+    const lines = avgByDay.map((d) =>
+      `• ${d.day}: avg ${d.avg} people/day (${d.occurrences} ${d.occurrences === 1 ? 'occurrence' : 'occurrences'}, ${d.total} total)`
+    );
+
+    const direction = isLowest ? 'lowest' : 'highest';
+    return `The weekday with the ${direction} average office attendance ${label} is **${top.day}** (avg ${top.avg} people/day).\n\nBreakdown by weekday:\n${lines.join('\n')}`;
+  }
+
+  /* ── Specific weekday filter: "busiest Friday", "quietest Monday" ─ */
+  if (targetWeekday >= 0 && /\b(busiest|most crowded|highest|peak|least|lowest|quietest|fewest)\b/.test(q)) {
+    const filtered = dailyCounts.filter(dc => getDow(dc.date) === targetWeekday);
+
+    if (filtered.length === 0) {
+      return `There are no ${weekdayMatch![1]}s in the working days ${label}.`;
+    }
+
+    const isLowest = /\b(least|lowest|quietest|fewest)\b/.test(q);
+    filtered.sort((a, b) => isLowest ? (a.count - b.count) : (b.count - a.count));
+
+    const top = filtered[0];
+    const direction = isLowest ? 'least busy' : 'busiest';
+    const lines = filtered.map((d) =>
+      `• ${formatDateNice(d.date)}: ${d.count} ${d.count === 1 ? 'person' : 'people'}`
+    );
+
+    return `The ${direction} ${weekdayMatch![1].charAt(0).toUpperCase() + weekdayMatch![1].slice(1)} ${label} is **${formatDateNice(top.date)}** with ${top.count} ${top.count === 1 ? 'person' : 'people'} in office.\n\nAll ${weekdayMatch![1]}s ${label}:\n${lines.join('\n')}`;
+  }
+
+  /* ── Week aggregation: "most crowded week", "quietest week" ─────── */
+  if (/\b(week)\b/.test(q) && /\b(most|busiest|crowded|highest|peak|least|quietest|fewest|lowest)\b/.test(q)) {
+    // Group by calendar week (Mon–Fri)
+    const weekBuckets: { weekStart: string; weekEnd: string; days: typeof dailyCounts }[] = [];
+    let currentBucket: typeof weekBuckets[0] | null = null;
+
+    for (const dc of dailyCounts) {
+      const dow = getDow(dc.date);
+      // Start a new week bucket on Monday or if no bucket yet
+      if (dow === 1 || !currentBucket) {
+        currentBucket = { weekStart: dc.date, weekEnd: dc.date, days: [dc] };
+        weekBuckets.push(currentBucket);
+      } else {
+        currentBucket.weekEnd = dc.date;
+        currentBucket.days.push(dc);
+      }
+    }
+
+    const weekStats = weekBuckets.map((w) => {
+      const total = w.days.reduce((s, d) => s + d.count, 0);
+      const avg = w.days.length > 0 ? Math.round((total / w.days.length) * 10) / 10 : 0;
+      const peak = [...w.days].sort((a, b) => b.count - a.count)[0];
+      return { ...w, total, avg, peak };
+    });
+
+    const isLowest = /\b(least|quietest|fewest|lowest)\b/.test(q);
+    weekStats.sort((a, b) => isLowest ? (a.avg - b.avg) : (b.avg - a.avg));
+
+    const top = weekStats[0];
+    const direction = isLowest ? 'quietest' : 'busiest';
+    const lines = weekStats.map((w, i) =>
+      `• Week ${i + 1} (${formatDateNice(w.weekStart)} – ${formatDateNice(w.weekEnd)}): avg ${w.avg}/day, total ${w.total} person-days, peak ${w.peak.count} on ${formatDateNice(w.peak.date)}`
+    );
+
+    return `The ${direction} week ${label} is **${formatDateNice(top.weekStart)} – ${formatDateNice(top.weekEnd)}** (avg ${top.avg} people/day).\n\nAll weeks ${label}:\n${lines.join('\n')}`;
   }
 
   // Single-day "how many people on Friday"

@@ -4,6 +4,7 @@ import { AuthRequest } from '../types/index.js';
 import config from '../config/index.js';
 import Entry from '../models/Entry.js';
 import Holiday from '../models/Holiday.js';
+import User from '../models/User.js';
 import {
   isMemberAllowedDate,
   getTodayString,
@@ -27,6 +28,10 @@ interface ScheduleAction {
   workingPortion?: 'wfh' | 'office';
   /** When set, only dates whose current entry matches this status are included */
   filterByCurrentStatus?: 'office' | 'leave' | 'wfh';
+  /** Reference another user's schedule as a filter condition (read-only lookup) */
+  referenceUser?: string;
+  /** Whether to include dates where the reference user IS present or IS NOT present */
+  referenceCondition?: 'present' | 'absent';
 }
 
 interface StructuredPlan {
@@ -114,9 +119,22 @@ Rules:
 Third-party detection rules:
 - This tool is ONLY for updating the current user's OWN schedule
 - The current user's name is "${userName}". If the command mentions the current user's own name (or any part of it like first name or last name), treat it as a self-reference — do NOT set targetUser
-- If the command mentions a DIFFERENT person's name or references someone else's schedule (e.g. "set Bala's days as office", "mark leave for John next week", "update Rahul's schedule"), you MUST set the top-level "targetUser" field to that person's name
-- Look for patterns like: "<name>'s", "for <name>", "<name>'s schedule", "update <name>", etc.
+- CRITICAL: "targetUser" must NEVER be set to "${userName}" or any part of that name. It is ONLY for when the user is explicitly trying to modify a DIFFERENT person's schedule (e.g. "update Bala's schedule to office"). In 99% of commands, targetUser should be OMITTED entirely.
+- IMPORTANT: Distinguish between MODIFYING someone else's schedule vs REFERENCING someone else's schedule as a filter:
+  a) MODIFY another person's schedule directly (e.g. "set Bala's days as office", "mark leave for John", "update Rahul's schedule") → set top-level "targetUser" to that person's name. This is RARE.
+  b) REFERENCE another person's schedule to decide YOUR OWN days (e.g. "mark office on days where Rahul is NOT coming", "set office on days Rahul is present", "mark every day Rahul is absent as office") → do NOT set targetUser. Instead, add "referenceUser" and "referenceCondition" inside the action. This is COMMON.
+  c) NO person mentioned at all (e.g. "mark all office days next month", "mark days with highest attendance") → do NOT set targetUser. The command is always about the current user's own schedule by default. This is the MOST COMMON case.
+- Pattern for (b): the user wants to update THEIR OWN calendar, but filter dates based on another person's attendance. Keywords: "where <name> is/isn't coming", "days <name> is absent/present", "when <name> is not in office", "attending", "streak for <name>"
+- DEFAULT BEHAVIOR: If a command says "mark" or "set" without explicitly saying "for <other person>" or "<other person>'s schedule", it is ALWAYS about the current user's own schedule. Do NOT set targetUser.
+- If unsure, prefer (b) over (a) when the command includes filtering language ("where", "when", "days that", "is coming", "is not coming", "is absent", "is present")
 - If the command is about the user's own schedule ("my", "I", the user's own name, or no name mentioned), do NOT set targetUser
+
+Examples:
+- "Mark every office day next month where Rahul is coming" → type="set", status="office", dateExpressions=["every day next month"], referenceUser="Rahul", referenceCondition="present", NO targetUser
+- "Mark every office day next month where Rahul is NOT coming" → type="set", status="office", dateExpressions=["every day next month"], referenceUser="Rahul", referenceCondition="absent", NO targetUser
+- "Mark all office days next month that have the highest attendance" → type="set", status="office", dateExpressions=["every day next month"], NO referenceUser, NO targetUser
+- "Mark every office day this month" → type="set", status="office", dateExpressions=["every day this month"], NO referenceUser, NO targetUser
+- "Mark days next month where exactly 3 employees attend" → type="set", status="office", dateExpressions=["every day next month"], NO referenceUser, NO targetUser
 
 Half-day leave rules:
 - If the user says "half day leave", "half-day leave", "half day off", or similar, set leaveDuration to "half"
@@ -144,12 +162,15 @@ Output format (JSON only):
       "leaveDuration": "half" (only for half-day leave),
       "halfDayPortion": "first-half" or "second-half" (only for half-day leave),
       "workingPortion": "wfh" or "office" (only for half-day leave, default: "wfh"),
-      "filterByCurrentStatus": "office" or "leave" or "wfh" (only when user references existing statuses)
+      "filterByCurrentStatus": "office" or "leave" or "wfh" (only when user references existing statuses),
+      "referenceUser": "other person's name (ONLY when referencing their schedule as a filter for YOUR dates)",
+      "referenceCondition": "present" or "absent" (ONLY these two values allowed. required when referenceUser is set. Use "present" to include dates the person IS attending. Use "absent" to include dates the person IS NOT attending. For streaks, consecutive patterns, etc — always use "present" and let post-processing handle the pattern logic.)
     }
   ],
-  "summary": "Brief human-readable summary of what will happen",
-  "targetUser": "other person's name (ONLY if command references someone else's schedule, omit otherwise)"
+  "summary": "Brief human-readable summary of what will happen"
 }
+
+IMPORTANT: Do NOT include "targetUser" in the output unless the command explicitly asks to modify another person's schedule (e.g. "update Bala's schedule"). For reference-based filtering (marking YOUR days based on someone else's attendance), use referenceUser inside the action instead.
 
 Respond ONLY with valid JSON. No markdown, no code fences, no explanation.`;
 }
@@ -532,7 +553,55 @@ export const resolvePlan = async (
       existingEntryMap = new Map(entries.map((e) => [e.date, e.status]));
     }
 
-    for (const { action, dates: resolvedDates } of actionsWithDates) {
+    // Reference-user lookup: resolve another user's schedule to filter dates
+    // Maps: actionIndex → Set of dates where the reference user has entries (is "present")
+    const referenceUserPresenceMaps = new Map<number, Set<string>>();
+    const referenceUserNames = new Map<number, string>();
+
+    for (let i = 0; i < actionsWithDates.length; i++) {
+      const action = actionsWithDates[i].action;
+      const dates = actionsWithDates[i].dates;
+      if (!action.referenceUser || !action.referenceCondition) continue;
+
+      const refName = action.referenceUser.trim();
+      if (!refName) continue;
+
+      // Look up the reference user by name (case-insensitive)
+      const refUser = await User.findOne({
+        name: { $regex: new RegExp(`^${refName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      }).lean();
+
+      if (!refUser) {
+        // Try partial match (first name)
+        const partialUser = await User.findOne({
+          name: { $regex: new RegExp(`\\b${refName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') },
+        }).lean();
+
+        if (!partialUser) {
+          referenceUserNames.set(i, refName);
+          referenceUserPresenceMaps.set(i, new Set()); // empty = user not found, treat all as absent
+          continue;
+        }
+
+        const refEntries = await Entry.find(
+          { userId: partialUser._id, date: { $in: dates }, status: 'office' },
+          { date: 1 },
+        ).lean();
+        referenceUserPresenceMaps.set(i, new Set(refEntries.map((e) => e.date)));
+        referenceUserNames.set(i, partialUser.name || refName);
+        continue;
+      }
+
+      const refEntries = await Entry.find(
+        { userId: refUser._id, date: { $in: dates }, status: 'office' },
+        { date: 1 },
+      ).lean();
+      referenceUserPresenceMaps.set(i, new Set(refEntries.map((e) => e.date)));
+      referenceUserNames.set(i, refUser.name || refName);
+    }
+
+    for (let idx = 0; idx < actionsWithDates.length; idx++) {
+      const { action, dates: resolvedDates } = actionsWithDates[idx];
 
       for (const date of resolvedDates) {
         // Validate date format
@@ -569,6 +638,14 @@ export const resolvePlan = async (
           } else {
             if (currentStatus !== action.filterByCurrentStatus) continue; // doesn't match → skip
           }
+        }
+
+        // Reference-user filtering: skip dates based on another user's presence
+        const refPresence = referenceUserPresenceMaps.get(idx);
+        if (action.referenceUser && action.referenceCondition && refPresence !== undefined) {
+          const isRefPresent = refPresence.has(date);
+          if (action.referenceCondition === 'present' && !isRefPresent) continue;  // want present, but absent → skip
+          if (action.referenceCondition === 'absent' && isRefPresent) continue;    // want absent, but present → skip
         }
 
         const dateObj = new Date(date + 'T00:00:00');

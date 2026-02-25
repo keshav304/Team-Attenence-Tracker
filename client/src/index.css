@@ -332,18 +332,42 @@
          text-gray-600 dark:text-gray-300;
 }
 
-/* ── Typing indicator ─────────────────────── */
-.typing-dots {
+/* ── Thinking indicator ───────────────────── */
+.thinking-indicator {
+  @apply flex flex-col gap-2 min-w-[200px];
+}
+.thinking-stage {
+  @apply flex items-center gap-2;
+  animation: thinkingFadeIn 0.4s ease-out;
+}
+.thinking-icon {
+  @apply text-base;
+}
+.thinking-text {
+  @apply text-sm text-gray-600 dark:text-gray-300 font-medium;
+}
+.thinking-dots {
   @apply inline-flex items-center gap-1 px-1;
 }
-.typing-dots span {
+.thinking-dots span {
   @apply w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500;
   animation: typingBounce 1.4s infinite ease-in-out both;
 }
-.typing-dots span:nth-child(1) { animation-delay: 0s; }
-.typing-dots span:nth-child(2) { animation-delay: 0.16s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.32s; }
+.thinking-dots span:nth-child(1) { animation-delay: 0s; }
+.thinking-dots span:nth-child(2) { animation-delay: 0.16s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.32s; }
+.thinking-progress {
+  @apply w-full h-1 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden mt-1;
+}
+.thinking-progress-bar {
+  @apply h-full bg-primary-500 rounded-full;
+  transition: width 0.6s ease-in-out;
+}
 
+@keyframes thinkingFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 @keyframes typingBounce {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40%           { transform: scale(1);   opacity: 1; }

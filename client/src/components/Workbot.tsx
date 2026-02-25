@@ -48,6 +48,30 @@ const EXAMPLE_COMMANDS = [
 const STATUS_OPTIONS: ('office' | 'leave' | 'clear')[] = ['office', 'leave', 'clear'];
 
 /* ------------------------------------------------------------------ */
+/*  Sub-components                                                    */
+/* ------------------------------------------------------------------ */
+
+type StepStatus = 'pending' | 'active' | 'done' | 'error';
+
+/** A single thinking step row */
+const WorkbotThinkingStep: React.FC<{
+  icon: string;
+  text: string;
+  status: StepStatus;
+}> = ({ icon, text, status }) => (
+  <div className={`workbot-thinking-step workbot-thinking-step--${status}`}>
+    <span className="workbot-thinking-step-icon" aria-hidden="true">{icon}</span>
+    <span className="workbot-thinking-step-text">{text}</span>
+    {status === 'done' && <span className="workbot-thinking-step-check" aria-hidden="true">✓</span>}
+    {status === 'active' && (
+      <span className="workbot-thinking-step-dots" aria-hidden="true">
+        <span>.</span><span>.</span><span>.</span>
+      </span>
+    )}
+  </div>
+);
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -333,15 +357,53 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
         {/* ── PROCESSING PHASES ── */}
         {isProcessing && (
           <div className="workbot-processing">
-            <div className="workbot-spinner" aria-hidden="true" />
-            <p className="workbot-processing-text">
-              {phase === 'parsing' && 'Understanding your command…'}
-              {phase === 'resolving' && 'Resolving dates…'}
-              {phase === 'applying' && 'Applying changes…'}
-            </p>
-            {parseSummary && phase !== 'parsing' && (
-              <p className="workbot-processing-summary">{parseSummary}</p>
-            )}
+            <div className="workbot-thinking">
+              <div className="workbot-thinking-header">
+                <span className="workbot-thinking-icon" aria-hidden="true">⚙️</span>
+                <span className="workbot-thinking-label">
+                  {phase === 'applying' ? 'Applying changes' : 'Processing your command'}
+                </span>
+                <span className="workbot-thinking-pulse" />
+              </div>
+              <div className="workbot-thinking-steps">
+                {phase !== 'applying' ? (
+                  <>
+                    {/* Parse + Resolve flow */}
+                    <WorkbotThinkingStep
+                      icon="🧠"
+                      text="Reading your natural language command"
+                      status={phase === 'parsing' ? 'active' : 'done'}
+                    />
+                    <WorkbotThinkingStep
+                      icon="🔍"
+                      text="Extracting intent & actions via AI"
+                      status={phase === 'parsing' ? 'active' : 'done'}
+                    />
+                    <WorkbotThinkingStep
+                      icon="📅"
+                      text="Resolving dates to your calendar"
+                      status={phase === 'resolving' ? 'active' : phase === 'parsing' ? 'pending' : 'done'}
+                    />
+                    <WorkbotThinkingStep
+                      icon="✅"
+                      text="Preparing preview of changes"
+                      status={phase === 'resolving' ? 'active' : 'pending'}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* Apply flow */}
+                    <WorkbotThinkingStep icon="📤" text="Sending changes to server" status="active" />
+                    <WorkbotThinkingStep icon="💾" text="Saving to your calendar" status="active" />
+                  </>
+                )}
+              </div>
+              {parseSummary && phase !== 'parsing' && (
+                <p className="workbot-processing-summary" style={{ textAlign: 'left', marginTop: '0.25rem' }}>
+                  💡 {parseSummary}
+                </p>
+              )}
+            </div>
           </div>
         )}
 

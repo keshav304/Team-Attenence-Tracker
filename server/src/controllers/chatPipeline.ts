@@ -369,6 +369,22 @@ async function handleComplexQuery(
         }
         break;
       }
+
+      case 'team_analytics': {
+        // Delegate to fast-path handler which has full team analytics logic
+        const handler = await getFastPathHandler();
+        if (handler) {
+          const fastAnswer = await handler(question, user, 'team_analytics' as any);
+          if (fastAnswer) {
+            return {
+              answer: fastAnswer,
+              intent: 'team_analytics',
+              usedLlm: true,
+            };
+          }
+        }
+        break;
+      }
     }
   } catch (err) {
     console.error('[Chat] Stage 4 error:', {
