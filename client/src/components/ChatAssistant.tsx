@@ -59,16 +59,59 @@ function nextId(): string {
 /*  Sub-components                                                    */
 /* ------------------------------------------------------------------ */
 
-/** Animated typing indicator (three bouncing dots) */
-const TypingIndicator: React.FC = () => (
-  <div className="chat-bubble chat-bubble--assistant" aria-label="Assistant is typing">
-    <span className="typing-dots">
-      <span />
-      <span />
-      <span />
-    </span>
-  </div>
-);
+/** Thinking stages the pipeline goes through */
+const THINKING_STAGES = [
+  { icon: '🤔', text: 'Understanding your question…' },
+  { icon: '🔍', text: 'Looking up relevant data…' },
+  { icon: '📊', text: 'Analyzing information…' },
+  { icon: '💡', text: 'Generating response…' },
+];
+
+const STAGE_INTERVAL_MS = 2500;
+
+/** Animated thinking indicator that cycles through pipeline stages */
+const ThinkingIndicator: React.FC = () => {
+  const [stageIdx, setStageIdx] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStageIdx((prev) =>
+        prev < THINKING_STAGES.length - 1 ? prev + 1 : prev,
+      );
+    }, STAGE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const stage = THINKING_STAGES[stageIdx];
+
+  return (
+    <div className="chat-row chat-row--assistant">
+      <div className="chat-avatar" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
+        </svg>
+      </div>
+      <div className="chat-bubble chat-bubble--assistant thinking-indicator" aria-label="Assistant is thinking">
+        <div className="thinking-stage" key={stageIdx}>
+          <span className="thinking-icon" aria-hidden="true">{stage.icon}</span>
+          <span className="thinking-text">{stage.text}</span>
+        </div>
+        <span className="thinking-dots">
+          <span />
+          <span />
+          <span />
+        </span>
+        {/* Progress bar */}
+        <div className="thinking-progress">
+          <div
+            className="thinking-progress-bar"
+            style={{ width: `${((stageIdx + 1) / THINKING_STAGES.length) * 100}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /** Single message bubble */
 const MessageBubble: React.FC<{ msg: Message; onCopy: (text: string) => void }> = ({
@@ -462,7 +505,7 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ pageName }) => {
                     {messages.map((msg) => (
                       <MessageBubble key={msg.id} msg={msg} onCopy={handleCopy} />
                     ))}
-                    {isLoading && <TypingIndicator />}
+                    {isLoading && <ThinkingIndicator />}
                   </>
                 )}
                 <div ref={messagesEndRef} />

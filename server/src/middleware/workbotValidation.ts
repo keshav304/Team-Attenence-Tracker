@@ -19,6 +19,8 @@ const scheduleActionSchema = z.object({
   dateExpressions: z.array(z.string().min(1)).min(1),
   note: z.string().max(MAX_NOTE_LENGTH).optional(),
   filterByCurrentStatus: z.enum(['office', 'leave', 'wfh']).optional(),
+  referenceUser: z.string().max(100).optional(),
+  referenceCondition: z.enum(['present', 'absent']).optional(),
 }).superRefine((data, ctx) => {
   if (data.type === 'clear' && data.filterByCurrentStatus !== undefined) {
     ctx.addIssue({

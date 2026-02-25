@@ -16,10 +16,11 @@ import type { ComplexIntent } from './complexityDetector.js';
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
 
-const VALID_COMPLEX_INTENTS: ReadonlySet<string> = new Set<ComplexIntent>([
+const VALID_COMPLEX_INTENTS: ReadonlySet<string> = new Set<ComplexIntent | 'team_analytics'>([
   'comparison', 'overlap', 'avoid', 'optimize', 'simulate',
   'meeting_plan', 'trend', 'multi_person_coordination',
   'clarify_needed', 'out_of_scope', 'explain_previous',
+  'team_analytics',
 ]);
 
 const VALID_OPTIMIZATION_GOALS: ReadonlySet<string> = new Set([
@@ -171,7 +172,7 @@ Mark as out_of_scope if the query asks about:
 Return ONLY this JSON structure:
 
 {
-  "intent": "<comparison | overlap | avoid | optimize | simulate | meeting_plan | trend | multi_person_coordination | clarify_needed | out_of_scope | explain_previous>",
+  "intent": "<comparison | overlap | avoid | optimize | simulate | meeting_plan | trend | multi_person_coordination | team_analytics | clarify_needed | out_of_scope | explain_previous>",
   "people": ["<names or references>"],
   "timeRange": "<normalized phrase from query>",
   "constraints": ["<constraints if any>"],
@@ -192,29 +193,59 @@ Use empty arrays or null when not applicable.
 ## INTENT DEFINITIONS
 
 comparison  
-→ Compare attendance metrics between people  
-Examples: "compare me and Bala", "who came more"
+→ Compare attendance metrics between TWO SPECIFIC named people  
+Examples: "compare me and Bala", "who came more — me or Rahul"  
 
 overlap  
-→ Measure shared office presence  
-Examples: "how many days did we work together"
+→ Measure shared office presence between named people  
+Examples: "how many days did we work together", "overlap between me and Bala"  
 
 avoid  
 → Minimize overlap with someone  
-Examples: "avoid Bala", "least overlap"
+Examples: "avoid Bala", "least overlap with Priya"  
 
 optimize  
-→ Recommend days based on a goal  
-Examples: "best days to go", "maximize collaboration"
+→ Recommend SPECIFIC DAYS for a person based on a goal  
+Examples: "best days to go", "maximize collaboration", "which 3-day combination maximizes overlap"  
 
 simulate  
-→ Hypothetical scenario ("if I go every Tuesday")  
+→ ANY hypothetical "what if" scenario that modifies attendance data  
+Includes: adding/removing days, shifting attendance, removing people, team-wide hypotheticals  
+Trigger words: "if", "what if", "suppose", "assuming", "hypothetically", "remove", "shift", "skip", "cancel", "redistribute"  
+Examples:  
+  • "if I go every Tuesday" → simulate  
+  • "if Rahul skips Monday" → simulate  
+  • "if everyone adds one extra day" → simulate  
+  • "if we shift Tuesday to Wednesday" → simulate  
+  • "if we remove the top 10% attendees" → simulate  
+  • "if we remove all holidays" → simulate  
+  • "if we cancel the lowest day" → simulate  
+  • "if we redistribute evenly" → simulate  
 
 meeting_plan  
 → Suggest days when people can meet in office  
 
 trend  
-→ Compare across time periods for the same person  
+→ Compare the SAME PERSON's attendance across TWO different time periods  
+Examples: "my attendance this month vs last month", "am I going to office more or less than before"  
+⚠ ONLY use trend when comparing the SAME person across DIFFERENT periods.  
+⚠ Do NOT use trend for team-level aggregate questions — use team_analytics instead.  
+⚠ Do NOT use trend for hypothetical modifications — use simulate instead.  
+
+team_analytics  
+→ Aggregate team-level questions about attendance patterns (no hypothetical changes)  
+Includes: busiest day, highest/lowest attendance weekday, peak day, crowded week, average per day, threshold counting, period comparisons for the TEAM  
+Examples:  
+  • "which weekday has highest attendance" → team_analytics  
+  • "busiest Friday next month" → team_analytics  
+  • "most crowded week" → team_analytics  
+  • "how many days qualify for 70% presence" → team_analytics  
+  • "which day has peak attendance" → team_analytics  
+  • "what is average attendance per day" → team_analytics  
+  • "which 2 consecutive days have highest combined attendance" → team_analytics  
+  • "compare first half vs second half" → team_analytics  
+  • "earliest day where attendance exceeds X" → team_analytics  
+  • "which week is most sensitive to absence" → team_analytics  
 
 multi_person_coordination  
 → Coordination involving 2+ other people  
@@ -223,10 +254,23 @@ explain_previous
 → Follow-up asking for explanation of earlier recommendation  
 
 clarify_needed  
-→ Missing key information or ambiguous intent  
+→ Missing CRITICAL information AND the question cannot be reasonably interpreted  
+⚠ Do NOT use clarify_needed for well-formed hypothetical questions.  
+⚠ "If X does Y" is NOT ambiguous — classify as simulate.  
 
 out_of_scope  
 → Outside attendance domain  
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## DISAMBIGUATION RULES (CRITICAL)
+
+When a question contains "if" + a modification → ALWAYS use simulate, never trend or team_analytics.  
+When a question asks about aggregate team stats without modification → use team_analytics, never trend.  
+When a question mentions "which weekday / busiest / peak / average attendance" for the team → team_analytics.  
+trend is ONLY for comparing the same person's data across 2 periods (no modifications).  
+
+Priority: simulate > team_analytics > trend  
+(If the question has an "if" hypothetical AND asks about team stats, use simulate.)  
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## PEOPLE EXTRACTION RULES
@@ -304,14 +348,20 @@ Otherwise → null
 Triggered by hypothetical phrasing:
 
 • "if I go..."
+• "if we..."
+• "if everyone..."
+• "if [name] skips/adds/shifts..."
 • "suppose"
 • "what if"
 • "assuming"
+• "remove" / "cancel" / "shift" / "redistribute" (implying modification)
 
 Extract:
 
 proposedDays → explicit dates  
 proposedDayOfWeek → weekday patterns  
+
+⚠ ANY question starting with "if" that modifies attendance → intent MUST be simulate.  
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## AMBIGUITY HANDLING
@@ -368,6 +418,31 @@ Q: "if I go every Tuesday next month, how much overlap will I have with Bala"
 
 A:
 {"intent":"simulate","people":["me","Bala"],"timeRange":"next month","constraints":[],"optimizationGoal":null,"simulationParams":{"proposedDays":[],"proposedDayOfWeek":["tuesday"]},"needsClarification":false,"ambiguities":[],"outOfScopeReason":null}
+
+Q: "which weekday has the highest average attendance this month"
+
+A:
+{"intent":"team_analytics","people":[],"timeRange":"this month","constraints":[],"optimizationGoal":null,"simulationParams":{"proposedDays":[],"proposedDayOfWeek":[]},"needsClarification":false,"ambiguities":[],"outOfScopeReason":null}
+
+Q: "if Rahul skips his Monday next week, does the peak attendance day change"
+
+A:
+{"intent":"simulate","people":["Rahul"],"timeRange":"next week","constraints":["skips Monday"],"optimizationGoal":null,"simulationParams":{"proposedDays":[],"proposedDayOfWeek":["monday"]},"needsClarification":false,"ambiguities":[],"outOfScopeReason":null}
+
+Q: "if we remove all public holidays next month, what is the new average attendance per day"
+
+A:
+{"intent":"simulate","people":[],"timeRange":"next month","constraints":["remove public holidays"],"optimizationGoal":null,"simulationParams":{"proposedDays":[],"proposedDayOfWeek":[]},"needsClarification":false,"ambiguities":[],"outOfScopeReason":null}
+
+Q: "if we remove the top 10% most frequent attendees next month, does the busiest day change"
+
+A:
+{"intent":"simulate","people":[],"timeRange":"next month","constraints":["remove top 10% most frequent attendees"],"optimizationGoal":null,"simulationParams":{"proposedDays":[],"proposedDayOfWeek":[]},"needsClarification":false,"ambiguities":[],"outOfScopeReason":null}
+
+Q: "if we require at least 70% team presence next month, how many days qualify"
+
+A:
+{"intent":"team_analytics","people":[],"timeRange":"next month","constraints":["at least 70% team presence"],"optimizationGoal":null,"simulationParams":{"proposedDays":[],"proposedDayOfWeek":[]},"needsClarification":false,"ambiguities":[],"outOfScopeReason":null}
 `;
 
 /* ------------------------------------------------------------------ */
@@ -380,6 +455,18 @@ A:
  */
 function heuristicIntentFallback(question: string): ComplexIntent | null {
   const q = question.toLowerCase();
+
+  // ── SIMULATE: any "if" + modification verb → simulate ──────────
+  // This must come FIRST (highest priority per disambiguation rules).
+  if (
+    /\b(if\s+we|if\s+everyone|if\s+\w+\s+(skip|shift|add|remove|cancel|redistribute)|what\s+if|if\s+we\s+(remove|shift|cancel|require|avoid|redistribute))\b/.test(q) &&
+    /\b(attendance|office|day|week|month|peak|busiest|crowded|average|holiday)\b/.test(q)
+  ) {
+    return 'simulate';
+  }
+
+  // "if I go" / "what if"
+  if (/\b(if\s+i\s+go|what\s+if)\b/.test(q)) return 'simulate';
 
   // "minimum overlap" / "avoid overlap" / "least overlap"
   if (/\b(minim|least|avoid|without)\b/.test(q) && /\b(overlap)\b/.test(q)) return 'avoid';
@@ -400,8 +487,19 @@ function heuristicIntentFallback(question: string): ComplexIntent | null {
   // "overlap between/with"
   if (/\b(overlap)\b/.test(q) && /\b(between|with)\b/.test(q)) return 'overlap';
 
-  // "if I go" / "what if"
-  if (/\b(if\s+i\s+go|what\s+if)\b/.test(q)) return 'simulate';
+  // Team analytics: busiest/quietest/crowded + weekday/week, or weekday + highest/average,
+  // or threshold questions, or "how many days qualify"
+  if (
+    (/\b(busiest|most\s+crowded|quietest|crowded|highest|lowest|peak)\b/.test(q) &&
+     /\b(week|monday|tuesday|wednesday|thursday|friday|weekday|day|attendance)\b/.test(q)) ||
+    (/\b(compare|vs\.?|versus)\b/.test(q) && /\b(first half|second half|half)\b/.test(q)) ||
+    (/\b(which\s+weekday|which\s+day|average\s+attendance)\b/.test(q)) ||
+    (/\b(how\s+many\s+days|qualify|exceed|threshold|percent\s+.*presence)\b/.test(q)) ||
+    (/\b(earliest|latest|most\s+sensitive)\b/.test(q) && /\b(day|week|attendance)\b/.test(q)) ||
+    (/\b(consecutive|combined)\b/.test(q) && /\b(day|attendance)\b/.test(q))
+  ) {
+    return 'team_analytics' as any;
+  }
 
   // "trend" / "increasing" / "decreasing"
   if (/\b(trend|increasing|decreasing|over\s+time)\b/.test(q)) return 'trend';
@@ -501,13 +599,23 @@ export async function extractStructured(
     let intent: ComplexIntent = isValidComplexIntent(parsed.intent) ? parsed.intent : 'out_of_scope';
     const llmIntent = intent;
 
-    // If the LLM classified as out_of_scope, double-check with heuristic.
-    // The LLM sometimes over-rejects future-period scheduling questions.
-    if (intent === 'out_of_scope') {
+    // ── Heuristic correction for common LLM misclassifications ────
+    // The LLM sometimes misclassifies:
+    //   - hypothetical "if" questions as trend (should be simulate)
+    //   - team aggregate questions as trend (should be team_analytics)
+    //   - well-formed hypotheticals as clarify_needed (should be simulate)
+    //   - in-scope questions as out_of_scope
+    const needsHeuristicCheck =
+      intent === 'out_of_scope' ||
+      intent === 'clarify_needed' ||
+      (intent === 'trend' && /\b(if\s+we|if\s+everyone|if\s+\w+\s+skip|remove|shift|cancel)\b/i.test(question)) ||
+      (intent === 'trend' && /\b(which\s+weekday|busiest|peak|highest|average\s+attendance|how\s+many)\b/i.test(question));
+
+    if (needsHeuristicCheck) {
       const heuristicIntent = heuristicIntentFallback(question);
       if (heuristicIntent) {
         intent = heuristicIntent;
-        console.log(`[Chat:Extractor] Heuristic override: LLM said out_of_scope → ${heuristicIntent}`);
+        console.log(`[Chat:Extractor] Heuristic override: LLM said ${llmIntent} → ${heuristicIntent}`);
       }
     }
 
