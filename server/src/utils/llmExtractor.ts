@@ -9,13 +9,12 @@
  */
 
 import config from '../config/index.js';
+import { callLLMProvider } from './llmProvider.js';
 import type { ComplexIntent } from './complexityDetector.js';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
-
-const LLM_FETCH_TIMEOUT_MS = 15_000;
 
 const VALID_COMPLEX_INTENTS: ReadonlySet<string> = new Set<ComplexIntent>([
   'comparison', 'overlap', 'avoid', 'optimize', 'simulate',
@@ -90,21 +89,23 @@ export interface HistoryMessage {
 }
 
 /* ------------------------------------------------------------------ */
-/*  LLM Models (matching chatController's pattern)                    */
+/*  LLM Call                                                          */
 /* ------------------------------------------------------------------ */
 
-const LLM_MODELS = [
-  'deepseek/deepseek-r1-0528:free',
-  'meta-llama/llama-4-maverick:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen3-235b-a22b:free',
-  'google/gemma-3-27b-it:free',
-  'nvidia/llama-3.1-nemotron-70b-instruct:free',
-  'microsoft/phi-4-reasoning-plus:free',
-  'google/gemma-3-12b-it:free',
-  'nvidia/nemotron-nano-9b-v2:free',
-  'qwen/qwen3-32b:free',
-];
+/**
+ * Call the centralized LLM provider to extract structured data.
+ * Delegates model selection and provider switching to llmProvider.
+ */
+async function callLLM(messages: Array<{ role: string; content: string }>): Promise<string> {
+  return callLLMProvider({
+    messages: messages as { role: 'system' | 'user' | 'assistant'; content: string }[],
+    maxTokens: 1024,
+    temperature: 0.1,
+    timeoutMs: 15_000,
+    jsonMode: true,
+    logPrefix: 'Chat:Extractor',
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /*  Extraction Prompt                                                 */
@@ -368,90 +369,6 @@ Q: "if I go every Tuesday next month, how much overlap will I have with Bala"
 A:
 {"intent":"simulate","people":["me","Bala"],"timeRange":"next month","constraints":[],"optimizationGoal":null,"simulationParams":{"proposedDays":[],"proposedDayOfWeek":["tuesday"]},"needsClarification":false,"ambiguities":[],"outOfScopeReason":null}
 `;
-
-/* ------------------------------------------------------------------ */
-/*  LLM Call                                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Call OpenRouter to extract structured data from the question.
- * Tries models in order until one succeeds.
- */
-async function callLLM(messages: Array<{ role: string; content: string }>): Promise<string> {
-  const apiKey = config.openRouterApiKey;
-  if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not configured');
-  }
-
-  let lastError = '';
-  const overallStart = Date.now();
-
-  for (const model of LLM_MODELS) {
-    const modelStart = Date.now();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), LLM_FETCH_TIMEOUT_MS);
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': config.clientUrl,
-          'X-Title': 'A-Team-Tracker Assistant',
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: 1024,
-          temperature: 0.1,
-          response_format: { type: 'json_object' },
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-
-      if (res.status === 429) {
-        await res.text(); // consume body to release socket
-        lastError = `Rate limited (${model})`;
-        console.log(`[Chat:Extractor] ⚠ ${model} → 429 rate-limited (${Date.now() - modelStart}ms)`);
-        continue;
-      }
-
-      if (!res.ok) {
-        const body = await res.text();
-        lastError = `${model} error ${res.status}: ${body.substring(0, 200)}`;
-        console.log(`[Chat:Extractor] ✗ ${model} → HTTP ${res.status} (${Date.now() - modelStart}ms)`);
-        continue;
-      }
-
-      const data = (await res.json()) as {
-        choices: { message: { content?: string; reasoning?: string; reasoning_content?: string } }[];
-      };
-
-      const msg = data.choices?.[0]?.message;
-      const answer = msg?.content?.trim() || msg?.reasoning_content?.trim() || msg?.reasoning?.trim() || '';
-
-      if (answer) {
-        console.log(`[Chat:Extractor] ✓ ${model} → success (${Date.now() - modelStart}ms, total ${Date.now() - overallStart}ms, ${answer.length} chars)`);
-        return answer;
-      }
-      lastError = `Empty answer (${model})`;
-      console.log(`[Chat:Extractor] ✗ ${model} → empty response (${Date.now() - modelStart}ms)`);
-    } catch (err: unknown) {
-      clearTimeout(timer);
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        lastError = `Timeout (${model})`;
-        console.log(`[Chat:Extractor] ✗ ${model} → timeout after ${LLM_FETCH_TIMEOUT_MS}ms`);
-      } else {
-        lastError = err instanceof Error ? err.message : String(err);
-        console.log(`[Chat:Extractor] ✗ ${model} → error: ${lastError} (${Date.now() - modelStart}ms)`);
-      }
-    }
-  }
-
-  console.log(`[Chat:Extractor] ✗ All models failed after ${Date.now() - overallStart}ms. Last: ${lastError}`);
-  throw new Error(`LLM extraction failed. Last error: ${lastError}`);
-}
 
 /* ------------------------------------------------------------------ */
 /*  Heuristic Fallback (safety net when LLM misclassifies)            */

@@ -11,6 +11,7 @@ import {
   toISTDateString,
 } from '../utils/date.js';
 import { Errors } from '../utils/AppError.js';
+import { callLLMProvider } from '../utils/llmProvider.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -63,19 +64,6 @@ interface ApplyItem {
 const MAX_COMMAND_LENGTH = 1000;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-const LLM_MODELS = [
-  'deepseek/deepseek-r1-0528:free',
-  'meta-llama/llama-4-maverick:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen3-235b-a22b:free',
-  'google/gemma-3-27b-it:free',
-  'nvidia/llama-3.1-nemotron-70b-instruct:free',
-  'microsoft/phi-4-reasoning-plus:free',
-  'google/gemma-3-12b-it:free',
-  'nvidia/nemotron-nano-9b-v2:free',
-  'qwen/qwen3-32b:free',
-];
-
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
@@ -87,74 +75,19 @@ function sanitise(input: string): string {
 /**
  * Call LLM to parse a natural-language scheduling command into a structured plan.
  * Uses separate system and user messages to prevent prompt injection.
+ * Delegates to the centralized LLM provider.
  */
 async function callLLM(systemPrompt: string, userMessage: string): Promise<string> {
-  const apiKey = config.openRouterApiKey;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured');
-
-  const LLM_TIMEOUT_MS = 60_000; // 60 seconds per model attempt
-  let lastError = '';
-
-  for (const model of LLM_MODELS) {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), LLM_TIMEOUT_MS);
-
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': config.clientUrl,
-          'X-Title': 'A-Team-Tracker Workbot',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage },
-          ],
-          max_tokens: 2048,
-          temperature: 0.1,
-        }),
-        signal: ac.signal,
-      });
-      clearTimeout(timer);
-
-      if (res.status === 429) {
-        lastError = `Rate limited (${model})`;
-        continue;
-      }
-      if (!res.ok) {
-        const body = await res.text();
-        lastError = `${model} error ${res.status}: ${body.substring(0, 200)}`;
-        continue;
-      }
-
-      const data = (await res.json()) as {
-        choices: { message: { content?: string; reasoning?: string; reasoning_content?: string } }[];
-      };
-
-      const msg = data.choices?.[0]?.message;
-      const answer =
-        msg?.content?.trim() ||
-        msg?.reasoning_content?.trim() ||
-        msg?.reasoning?.trim() ||
-        '';
-
-      if (answer) return answer;
-      lastError = `Empty answer (${model})`;
-    } catch (err: unknown) {
-      clearTimeout(timer);
-      if (err instanceof Error && err.name === 'AbortError') {
-        lastError = `Timeout after ${LLM_TIMEOUT_MS / 1000}s (${model})`;
-      } else {
-        lastError = err instanceof Error ? err.message : String(err);
-      }
-    }
-  }
-
-  throw new Error(`All LLM models failed. Last error: ${lastError}`);
+  return callLLMProvider({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ],
+    maxTokens: 2048,
+    temperature: 0.1,
+    timeoutMs: 60_000,
+    logPrefix: 'Workbot',
+  });
 }
 
 /**

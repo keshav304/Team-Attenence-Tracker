@@ -9,7 +9,7 @@
  *   - Complex: LLM paraphrase with structured data injected
  */
 
-import config from '../config/index.js';
+import { callLLMProvider } from './llmProvider.js';
 import type { ReasoningResult, ComparisonResult, TeamAvgComparisonResult, OverlapResult, MultiPersonOverlapResult, OptimizationResult, SimulationResult, TrendResult } from './reasoning.js';
 import type { DataCoverage } from './dataRetrieval.js';
 import { formatDateNice } from './workingDays.js';
@@ -155,30 +155,12 @@ function formatTrend(result: TrendResult): string {
 /*  LLM Paraphrase (for complex multi-entity responses)               */
 /* ------------------------------------------------------------------ */
 
-const LLM_MODELS = [
-  'deepseek/deepseek-r1-0528:free',
-  'meta-llama/llama-4-maverick:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen3-235b-a22b:free',
-  'google/gemma-3-27b-it:free',
-  'nvidia/llama-3.1-nemotron-70b-instruct:free',
-  'microsoft/phi-4-reasoning-plus:free',
-  'google/gemma-3-12b-it:free',
-  'nvidia/nemotron-nano-9b-v2:free',
-  'qwen/qwen3-32b:free',
-];
-
-const LLM_FETCH_TIMEOUT_MS = 12_000;
-
 /** Sanitize user-controlled text before injecting into LLM messages. */
 function sanitizeForPrompt(s: string): string {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').replace(/`/g, "'").trim();
 }
 
 async function llmParaphrase(data: any, originalQuestion: string): Promise<string | null> {
-  const apiKey = config.openRouterApiKey;
-  if (!apiKey) return null;
-
   const systemContent = `You are formatting a workplace attendance answer. Convert the structured data below into a natural, concise response. Do NOT add information beyond what's provided. Preserve all numerical values and formatting. Keep the tone professional and helpful.
 
 Computed data:
@@ -186,50 +168,21 @@ ${JSON.stringify(data, null, 2)}`;
 
   const userContent = sanitizeForPrompt(originalQuestion);
 
-  for (const model of LLM_MODELS) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), LLM_FETCH_TIMEOUT_MS);
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': config.clientUrl,
-          'X-Title': 'A-Team-Tracker Assistant',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemContent },
-            { role: 'user', content: userContent },
-          ],
-          max_tokens: 512,
-          temperature: 0.3,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-
-      if (!res.ok) {
-        console.warn(`llmParaphrase: model ${model} returned HTTP ${res.status} ${res.statusText}`);
-        continue;
-      }
-
-      const resData = (await res.json()) as {
-        choices: { message: { content?: string; reasoning_content?: string; reasoning?: string } }[];
-      };
-      const msg = resData.choices?.[0]?.message;
-      const answer = msg?.content?.trim() || msg?.reasoning_content?.trim() || msg?.reasoning?.trim() || '';
-      if (answer) return answer;
-    } catch (err: any) {
-      clearTimeout(timer);
-      console.warn(`llmParaphrase: model ${model} threw error:`, err?.message || err, err?.stack);
-      continue;
-    }
+  try {
+    return await callLLMProvider({
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: userContent },
+      ],
+      maxTokens: 512,
+      temperature: 0.3,
+      timeoutMs: 12_000,
+      logPrefix: 'Chat:Paraphrase',
+    });
+  } catch (err: any) {
+    console.warn('llmParaphrase: all models failed:', err?.message || err);
+    return null;
   }
-
-  return null;
 }
 
 /* ------------------------------------------------------------------ */

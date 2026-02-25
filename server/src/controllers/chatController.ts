@@ -4,6 +4,7 @@ import { embedText } from '../utils/embeddings.js';
 import config from '../config/index.js';
 import { AuthRequest } from '../types/index.js';
 import { Errors } from '../utils/AppError.js';
+import { callLLMProvider } from '../utils/llmProvider.js';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
@@ -65,104 +66,16 @@ ${question}`;
 }
 
 /**
- * Ordered list of free models to try. If the first returns a rate-limit or
- * empty response, subsequent models are attempted.
+ * Generate an answer using the centralized LLM provider.
+ * Delegates model selection, fallback, and provider switching to llmProvider.
  */
-const LLM_MODELS = [
-  'deepseek/deepseek-r1-0528:free',
-  'meta-llama/llama-4-maverick:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen3-235b-a22b:free',
-  'google/gemma-3-27b-it:free',
-  'nvidia/llama-3.1-nemotron-70b-instruct:free',
-  'microsoft/phi-4-reasoning-plus:free',
-  'google/gemma-3-12b-it:free',
-  'nvidia/nemotron-nano-9b-v2:free',
-  'qwen/qwen3-32b:free',
-];
-
-/**
- * Call OpenRouter (free-tier compatible) to generate the answer.
- * Tries models in order until one succeeds with a non-empty response.
- */
-async function generateAnswer(
-  systemPrompt: string
-): Promise<string> {
-  const apiKey = config.openRouterApiKey;
-  if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not configured');
-  }
-
-  let lastError = '';
-  const overallStart = Date.now();
-
-  for (const model of LLM_MODELS) {
-    const modelStart = Date.now();
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'HTTP-Referer': config.clientUrl,
-          'X-Title': 'A-Team-Tracker Assistant',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-          ],
-          max_tokens: 1024,
-          temperature: 0.2,
-        }),
-      });
-
-      if (res.status === 429) {
-        lastError = `Rate limited (${model})`;
-        console.log(`[Chat:RAG] ⚠ ${model} → 429 rate-limited (${Date.now() - modelStart}ms)`);
-        continue;
-      }
-
-      if (!res.ok) {
-        const body = await res.text();
-        lastError = `${model} error ${res.status}`;
-        console.log(`[Chat:RAG] ✗ ${model} → HTTP ${res.status} (${Date.now() - modelStart}ms)`);
-        continue;
-      }
-
-      const data = (await res.json()) as {
-        choices: {
-          message: {
-            content?: string;
-            reasoning?: string;
-            reasoning_content?: string;
-          };
-        }[];
-      };
-
-      const msg = data.choices?.[0]?.message;
-      const answer =
-        msg?.content?.trim() ||
-        msg?.reasoning_content?.trim() ||
-        msg?.reasoning?.trim() ||
-        '';
-
-      if (answer) {
-        console.log(`[Chat:RAG] ✓ ${model} → success (${Date.now() - modelStart}ms, total ${Date.now() - overallStart}ms)`);
-        return answer;
-      }
-
-      lastError = `Empty answer (${model})`;
-      console.log(`[Chat:RAG] ✗ ${model} → empty response (${Date.now() - modelStart}ms)`);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      lastError = errMsg;
-      console.log(`[Chat:RAG] ✗ ${model} → error: ${errMsg} (${Date.now() - modelStart}ms)`);
-    }
-  }
-
-  console.log(`[Chat:RAG] ✗ All models failed after ${Date.now() - overallStart}ms. Last: ${lastError}`);
-  throw new Error(`All LLM models failed. Last error: ${lastError}`);
+async function generateAnswer(systemPrompt: string): Promise<string> {
+  return callLLMProvider({
+    messages: [{ role: 'system', content: systemPrompt }],
+    maxTokens: 1024,
+    temperature: 0.2,
+    logPrefix: 'Chat:RAG',
+  });
 }
 
 /* ------------------------------------------------------------------ */
