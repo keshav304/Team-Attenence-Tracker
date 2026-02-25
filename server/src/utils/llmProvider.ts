@@ -56,13 +56,18 @@ const OPENROUTER_MODELS = [
 /**
  * NVIDIA NIM models (tried in order).
  * Free-tier models available at https://build.nvidia.com
+ * Ordered by speed + reliability — fast proven models first, large reasoning last.
  */
 const NVIDIA_MODELS = [
-  'moonshotai/kimi-k2.5',
-  'deepseek-ai/deepseek-r1',
-  'meta/llama-3.3-70b-instruct',
-  'nvidia/llama-3.1-nemotron-ultra-253b-v1',
-  'google/gemma-3-27b-it',
+  'meta/llama-3.3-70b-instruct',                      // proven fast (~1s), strong instruction following
+  'nvidia/llama-3.3-nemotron-super-49b-v1.5',         // high efficiency, leading accuracy, function calling
+  'deepseek-ai/deepseek-v3.1',                        // hybrid reasoning, 128K context, tool use
+  'qwen/qwen3-235b-a22b',                             // 235B MoE, advanced reasoning + math
+  'nvidia/llama-3.1-nemotron-ultra-253b-v1',          // 253B, superior reasoning + coding
+  'z-ai/glm4.7',                                      // multilingual agentic, tool use, reasoning
+  'mistralai/mistral-nemotron',                        // agentic workflows, instruction + function calling
+  'google/gemma-3-27b-it',                             // reliable mid-size fallback
+  'nvidia/nemotron-3-nano-30b-a3b',                    // lightweight 30B MoE, 1M context, last resort
 ];
 
 /* ------------------------------------------------------------------ */
