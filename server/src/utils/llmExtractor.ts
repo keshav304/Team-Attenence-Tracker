@@ -283,10 +283,28 @@ Priority: simulate > team_analytics > trend
 • Handle multiple names
 • Ignore titles (Mr., Dr., etc.)
 
+### PRONOUN / COREFERENCE RESOLUTION (CRITICAL)
+
+When the user uses pronouns like "him", "her", "them", "they", "that person",
+"this person", "the same person", "same people", or repeats a reference from
+an earlier turn, you MUST resolve these to the actual person name(s) from the
+conversation history.
+
+Examples:
+ - Previous turn mentioned "Rahul", current question says "avoid him" → people: ["me", "Rahul"]
+ - Previous turn about "Priya and Amit", current says "overlap with them" → people: ["me", "Priya", "Amit"]
+ - Previous turn about "Bala", current says "what about that person next week" → people: ["me", "Bala"]
+
+⚠ NEVER output pronouns (him, her, them, etc.) in the people array.
+⚠ ALWAYS replace pronouns with the resolved name from conversation history.
+⚠ If you cannot resolve a pronoun, set needsClarification=true with an ambiguity of type "person".
+
 Examples:
 
 "compare me and Bala" → ["me","Bala"]  
 "avoid Rahul and Priya" → ["me","Rahul","Priya"]
+"avoid him" (history mentions Rahul) → ["me","Rahul"]  
+"overlap with them" (history mentions Priya and Amit) → ["me","Priya","Amit"]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## TIME RANGE RULES
@@ -510,6 +528,151 @@ function heuristicIntentFallback(question: string): ComplexIntent | null {
 /**
  * Heuristic optimization goal extraction from the question text.
  */
+/* ------------------------------------------------------------------ */
+/*  Pronoun resolution from conversation history                      */
+/* ------------------------------------------------------------------ */
+
+/** Common pronouns that should be resolved from conversation history */
+const PRONOUNS = new Set(['him', 'her', 'them', 'they', 'he', 'she', 'that person', 'this person', 'the same person', 'same people']);
+
+/** Precompiled word-boundary regexes for each pronoun (built once at module load) */
+const PRONOUN_REGEXES: RegExp[] = [...PRONOUNS].map(
+  (p) => new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
+);
+
+/** Check if a question contains pronouns that need resolution */
+function containsPronouns(question: string): boolean {
+  const q = question.toLowerCase();
+  for (const re of PRONOUN_REGEXES) {
+    if (re.test(q)) return true;
+  }
+  return false;
+}
+
+/**
+ * Extract person names mentioned in conversation history messages.
+ * Scans assistant responses for patterns like "rahul is in office",
+ * "overlap with Rahul", etc.
+ */
+function extractNamesFromHistory(history?: HistoryMessage[]): string[] {
+  if (!history || history.length === 0) return [];
+
+  const names = new Set<string>();
+  // Common words to exclude
+  const EXCLUDE = new Set([
+    'the', 'a', 'an', 'is', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or',
+    'not', 'no', 'yes', 'with', 'from', 'by', 'as', 'it', 'be', 'was', 'were',
+    'are', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+    'would', 'could', 'should', 'may', 'might', 'shall', 'can', 'i', 'me', 'my',
+    'we', 'our', 'you', 'your', 'they', 'them', 'their', 'he', 'him', 'his',
+    'she', 'her', 'office', 'wfh', 'leave', 'home', 'work', 'day', 'days',
+    'week', 'month', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+    'saturday', 'sunday', 'overlap', 'attendance', 'schedule', 'team', 'best',
+    'maximum', 'minimum', 'note', 'some', 'data', 'may', 'set', 'incomplete',
+    // Common sentence-starting / interrogative words
+    'what', 'which', 'when', 'where', 'who', 'whom', 'how', 'why',
+    'next', 'last', 'same', 'also', 'just', 'only', 'even', 'any', 'all',
+    'tell', 'show', 'give', 'find', 'list', 'get', 'check', 'compare',
+    'does', 'want', 'need', 'like', 'please', 'thanks', 'sure', 'okay',
+    // Month names (sentence-starting false positives)
+    'january', 'february', 'march', 'april', 'june', 'july',
+    'august', 'september', 'october', 'november', 'december',
+  ]);
+
+  for (const msg of history) {
+    const text = msg.text;
+
+    // Pattern: "<Name> is in office" / "<Name> is not coming" / "<Name>'s schedule"
+    const namePatterns = text.match(/\b([A-Z][a-z]{2,})(?:'s|\s+is|\s+has|\s+was|\s+will|\s+attend|\s+coming|\s+present|\s+absent)\b/g);
+    if (namePatterns) {
+      for (const match of namePatterns) {
+        const name = match.match(/^([A-Z][a-z]{2,})/)?.[1];
+        if (name && !EXCLUDE.has(name.toLowerCase())) {
+          names.add(name);
+        }
+      }
+    }
+
+    // Pattern: "with <Name>" / "avoid <Name>" / "overlap with <Name>"
+    const withPatterns = text.match(/\b(?:with|avoid|from|and|between)\s+([A-Z][a-z]{2,})\b/gi);
+    if (withPatterns) {
+      for (const match of withPatterns) {
+        const name = match.match(/\s([A-Z][a-z]{2,})$/i)?.[1];
+        if (name && !EXCLUDE.has(name.toLowerCase())) {
+          // Capitalize first letter
+          names.add(name.charAt(0).toUpperCase() + name.slice(1).toLowerCase());
+        }
+      }
+    }
+
+    // Pattern: user questions mentioning names directly
+    if (msg.role === 'user') {
+      // Match capitalized words that look like names (not at start of sentence only)
+      const userNameMatches = text.match(/\b([A-Z][a-z]{2,})\b/g);
+      if (userNameMatches) {
+        for (const name of userNameMatches) {
+          if (!EXCLUDE.has(name.toLowerCase())) {
+            names.add(name);
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(names);
+}
+
+/**
+ * Resolve pronouns in a question using conversation history.
+ * Returns resolved person names for any pronouns found.
+ */
+function resolvePronounsFromHistory(question: string, history?: HistoryMessage[]): string[] {
+  if (!containsPronouns(question)) return [];
+  return extractNamesFromHistory(history);
+}
+
+/**
+ * Post-process the LLM's people array to resolve any remaining pronouns.
+ * If the LLM returned pronouns (him, her, them, etc.) or if the question
+ * contains pronouns but the people array is empty/only has "me",
+ * resolve from conversation history.
+ */
+function resolvePronouns(people: string[], question: string, history?: HistoryMessage[]): string[] {
+  const resolved = [...people];
+  let needsResolution = false;
+
+  // Check if any entry in people is a pronoun
+  for (let i = 0; i < resolved.length; i++) {
+    if (PRONOUNS.has(resolved[i].toLowerCase())) {
+      needsResolution = true;
+      resolved.splice(i, 1); // remove the pronoun
+      i--;
+    }
+  }
+
+  // Also check if the question has pronouns but LLM didn't extract any person beyond "me"
+  if (!needsResolution && containsPronouns(question)) {
+    const nonSelf = resolved.filter(p => !['me', 'my', 'i', 'myself'].includes(p.toLowerCase()));
+    if (nonSelf.length === 0) {
+      needsResolution = true;
+    }
+  }
+
+  if (needsResolution) {
+    const historyNames = extractNamesFromHistory(history);
+    if (historyNames.length > 0) {
+      for (const name of historyNames) {
+        if (!resolved.some(p => p.toLowerCase() === name.toLowerCase())) {
+          resolved.push(name);
+          console.log(`[Chat:Extractor] Pronoun resolution: resolved pronoun → "${name}" from history`);
+        }
+      }
+    }
+  }
+
+  return resolved;
+}
+
 function heuristicOptimizationGoal(question: string): LLMExtraction['optimizationGoal'] | undefined {
   const q = question.toLowerCase();
   if (/\b(minim|least|avoid|without)\b/.test(q) && /\b(overlap)\b/.test(q)) return 'minimize_overlap';
@@ -522,14 +685,25 @@ function heuristicOptimizationGoal(question: string): LLMExtraction['optimizatio
  * Simple heuristic to extract people names from the question.
  * Looks for "with <name>" or "avoid <name>" patterns.
  */
-function extractPeopleHeuristic(question: string): string[] {
+function extractPeopleHeuristic(question: string, history?: HistoryMessage[]): string[] {
   const people: string[] = ['me'];
   const q = question.toLowerCase();
 
   // "with <name>"
   const withMatch = q.match(/\b(?:with|avoid|from)\s+([a-z]+)\b/);
-  if (withMatch && !['the', 'a', 'my', 'this', 'that', 'it', 'them', 'office', 'leave'].includes(withMatch[1])) {
-    people.push(withMatch[1]);
+  if (withMatch && !['the', 'a', 'my', 'this', 'that', 'it', 'them', 'him', 'her', 'office', 'leave'].includes(withMatch[1])) {
+    const titleCased = withMatch[1].charAt(0).toUpperCase() + withMatch[1].slice(1);
+    people.push(titleCased);
+  }
+
+  // Resolve pronouns from conversation history
+  const resolvedFromHistory = resolvePronounsFromHistory(q, history);
+  if (resolvedFromHistory.length > 0) {
+    for (const name of resolvedFromHistory) {
+      if (!people.some(p => p.toLowerCase() === name.toLowerCase())) {
+        people.push(name);
+      }
+    }
   }
 
   return people;
@@ -621,10 +795,14 @@ export async function extractStructured(
 
     console.log(`[Chat:Extractor] Extracted: intent=${intent}${llmIntent !== intent ? ` (LLM: ${llmIntent})` : ''}, people=[${(parsed.people || []).join(', ')}], time="${parsed.timeRange || 'this month'}", goal=${parsed.optimizationGoal || 'none'}`);
 
+    // ── Post-processing: resolve any pronouns the LLM didn't catch ──
+    let people: string[] = Array.isArray(parsed.people) ? parsed.people : [];
+    people = resolvePronouns(people, question, history);
+
     // Validate and normalize
     return {
       intent,
-      people: Array.isArray(parsed.people) ? parsed.people : [],
+      people,
       timeRange: parsed.timeRange || 'this month',
       constraints: Array.isArray(parsed.constraints) ? parsed.constraints : [],
       optimizationGoal: isValidOptimizationGoal(parsed.optimizationGoal)
@@ -640,12 +818,14 @@ export async function extractStructured(
     // Fallback: try heuristic before giving up
     const heuristicIntent = heuristicIntentFallback(question);
     if (heuristicIntent) {
-      console.log(`[Chat:Extractor] Heuristic fallback: intent=${heuristicIntent}, people=[${extractPeopleHeuristic(question).join(', ')}], time="${extractTimeRangeHeuristic(question)}"`);
+      const people = extractPeopleHeuristic(question, history);
+      const timeRange = extractTimeRangeHeuristic(question);
+      console.log(`[Chat:Extractor] Heuristic fallback: intent=${heuristicIntent}, people=[${people.join(', ')}], time="${timeRange}"`);
       return {
         ...DEFAULT_EXTRACTION,
         intent: heuristicIntent,
-        people: extractPeopleHeuristic(question),
-        timeRange: extractTimeRangeHeuristic(question),
+        people,
+        timeRange,
         optimizationGoal: heuristicOptimizationGoal(question),
       };
     }
