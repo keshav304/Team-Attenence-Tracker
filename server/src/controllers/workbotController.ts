@@ -225,6 +225,34 @@ function resolveDateExpressions(expressions: string[], todayStr: string): string
       continue;
     }
 
+    // "every day next month", "every day this month", "every day next week", "every day this week"
+    const everyDayPeriodMatch = lower.match(/^every\s+day\s+(next month|this month|next week|this week)$/);
+    if (everyDayPeriodMatch) {
+      const period = everyDayPeriodMatch[1];
+      if (period === 'next month') {
+        const year = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+        const month = (today.getMonth() + 1) % 12;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+          const d = new Date(year, month, i);
+          if (d.getDay() !== 0 && d.getDay() !== 6) dates.add(fmtDate(d));
+        }
+      } else if (period === 'this month') {
+        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        for (let i = 1; i <= daysInMonth; i++) {
+          const d = new Date(today.getFullYear(), today.getMonth(), i);
+          if (d.getDay() !== 0 && d.getDay() !== 6) dates.add(fmtDate(d));
+        }
+      } else if (period === 'next week') {
+        const weekDates = getWeekDates(today, 1);
+        weekDates.forEach(d => dates.add(d));
+      } else if (period === 'this week') {
+        const weekDates = getWeekDates(today, 0);
+        weekDates.forEach(d => dates.add(d));
+      }
+      continue;
+    }
+
     // "every <dayName> next month" or "every <dayName> this month"
     const everyDayMonthMatch = lower.match(/^every\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(next month|this month|of next month|of this month)$/);
     if (everyDayMonthMatch) {
@@ -290,6 +318,18 @@ function resolveDateExpressions(expressions: string[], todayStr: string): string
           dates.add(fmtDate(d));
         }
         d.setDate(d.getDate() + 1);
+      }
+      continue;
+    }
+
+    // "this month"
+    if (lower === 'this month') {
+      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      for (let i = 1; i <= daysInMonth; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth(), i);
+        if (d.getDay() !== 0 && d.getDay() !== 6) {
+          dates.add(fmtDate(d));
+        }
       }
       continue;
     }
