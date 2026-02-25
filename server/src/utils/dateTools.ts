@@ -148,8 +148,18 @@ function resolveExplicitDates(
   for (const raw of params.dates) {
     const lower = raw.toLowerCase().trim();
 
-    if (/^\d{4}-\d{2}-\d{2}$/.test(lower)) {
-      resolved.push(lower);
+    // Explicit YYYY-MM-DD — validate calendar correctness so that
+    // impossible dates like "2025-02-30" are rejected as unknowns.
+    const isoMatch = lower.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const [, yStr, mStr, dStr] = isoMatch;
+      const y = Number(yStr), m = Number(mStr), d = Number(dStr);
+      const probe = new Date(y, m - 1, d);
+      if (probe.getFullYear() === y && probe.getMonth() === m - 1 && probe.getDate() === d) {
+        resolved.push(fmtDate(probe));
+      } else {
+        unknowns.push(raw);
+      }
       continue;
     }
     if (lower === 'today') {
@@ -162,7 +172,8 @@ function resolveExplicitDates(
       resolved.push(fmtDate(d));
       continue;
     }
-    // "next Monday"
+    // "next Monday" — intentionally resolves to the next occurrence of the
+    // named day, always skipping today (uses DAY_MAP for name → number).
     const nextMatch = lower.match(/^next\s+(\w+)$/);
     if (nextMatch && DAY_MAP[nextMatch[1]] !== undefined) {
       const target = DAY_MAP[nextMatch[1]];
@@ -185,7 +196,8 @@ function resolveExplicitDates(
       resolved.push(fmtDate(d));
       continue;
     }
-    // Bare day name → next occurrence
+    // Bare day name (e.g. "friday") — like "next {day}", intentionally
+    // resolves to the next occurrence after today (skips today) via DAY_MAP.
     if (DAY_MAP[lower] !== undefined) {
       const target = DAY_MAP[lower];
       const d = new Date(today);
