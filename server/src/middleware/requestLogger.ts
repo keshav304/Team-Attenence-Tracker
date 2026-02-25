@@ -71,6 +71,24 @@ export const logger = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Quiet routes — suppress logging for high-frequency polling         */
+/* ------------------------------------------------------------------ */
+
+const QUIET_ROUTES = new Set([
+  '/api/notifications/unread-count',
+  '/api/status/today',
+]);
+
+/** Suppress logging for high-frequency polling GETs that return 304 */
+function isQuietRoute(method: string, path: string, status: number): boolean {
+  if (method !== 'GET') return false;
+  // Only suppress 304 (not-modified) responses — still log 200/400/500
+  if (status !== 304) return false;
+  const basePath = path.split('?')[0];
+  return QUIET_ROUTES.has(basePath);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Express middleware                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -79,6 +97,12 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 
   res.on('finish', () => {
     const duration = Date.now() - start;
+
+    // Skip noisy polling routes
+    if (isQuietRoute(req.method, req.originalUrl, res.statusCode)) {
+      return;
+    }
+
     const userId = (req as AuthRequest).user?._id?.toString() ?? null;
 
     // Strip sensitive query parameters from the logged path

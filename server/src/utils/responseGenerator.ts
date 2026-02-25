@@ -156,10 +156,16 @@ function formatTrend(result: TrendResult): string {
 /* ------------------------------------------------------------------ */
 
 const LLM_MODELS = [
-  'nvidia/nemotron-nano-9b-v2:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-3-12b-it:free',
   'deepseek/deepseek-r1-0528:free',
+  'meta-llama/llama-4-maverick:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'qwen/qwen3-235b-a22b:free',
+  'google/gemma-3-27b-it:free',
+  'nvidia/llama-3.1-nemotron-70b-instruct:free',
+  'microsoft/phi-4-reasoning-plus:free',
+  'google/gemma-3-12b-it:free',
+  'nvidia/nemotron-nano-9b-v2:free',
+  'qwen/qwen3-32b:free',
 ];
 
 const LLM_FETCH_TIMEOUT_MS = 12_000;

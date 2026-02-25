@@ -69,10 +69,16 @@ ${question}`;
  * empty response, subsequent models are attempted.
  */
 const LLM_MODELS = [
-  'nvidia/nemotron-nano-9b-v2:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-3-12b-it:free',
   'deepseek/deepseek-r1-0528:free',
+  'meta-llama/llama-4-maverick:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'qwen/qwen3-235b-a22b:free',
+  'google/gemma-3-27b-it:free',
+  'nvidia/llama-3.1-nemotron-70b-instruct:free',
+  'microsoft/phi-4-reasoning-plus:free',
+  'google/gemma-3-12b-it:free',
+  'nvidia/nemotron-nano-9b-v2:free',
+  'qwen/qwen3-32b:free',
 ];
 
 /**
@@ -88,8 +94,10 @@ async function generateAnswer(
   }
 
   let lastError = '';
+  const overallStart = Date.now();
 
   for (const model of LLM_MODELS) {
+    const modelStart = Date.now();
     try {
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -110,15 +118,15 @@ async function generateAnswer(
       });
 
       if (res.status === 429) {
-        console.warn(`Chat: model ${model} rate-limited, trying next…`);
         lastError = `Rate limited (${model})`;
+        console.log(`[Chat:RAG] ⚠ ${model} → 429 rate-limited (${Date.now() - modelStart}ms)`);
         continue;
       }
 
       if (!res.ok) {
         const body = await res.text();
-        console.warn(`Chat: model ${model} returned ${res.status}: ${body.substring(0, 200)}`);
         lastError = `${model} error ${res.status}`;
+        console.log(`[Chat:RAG] ✗ ${model} → HTTP ${res.status} (${Date.now() - modelStart}ms)`);
         continue;
       }
 
@@ -132,9 +140,6 @@ async function generateAnswer(
         }[];
       };
 
-      // Some reasoning models (e.g. DeepSeek R1) put the answer in
-      // message.content, but may leave it empty while spending tokens on
-      // the reasoning field.  Fall back to reasoning if content is blank.
       const msg = data.choices?.[0]?.message;
       const answer =
         msg?.content?.trim() ||
@@ -143,18 +148,20 @@ async function generateAnswer(
         '';
 
       if (answer) {
+        console.log(`[Chat:RAG] ✓ ${model} → success (${Date.now() - modelStart}ms, total ${Date.now() - overallStart}ms)`);
         return answer;
       }
 
-      console.warn(`Chat: model ${model} returned empty content, trying next…`);
       lastError = `Empty answer (${model})`;
+      console.log(`[Chat:RAG] ✗ ${model} → empty response (${Date.now() - modelStart}ms)`);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.warn(`Chat: model ${model} threw: ${errMsg}`);
       lastError = errMsg;
+      console.log(`[Chat:RAG] ✗ ${model} → error: ${errMsg} (${Date.now() - modelStart}ms)`);
     }
   }
 
+  console.log(`[Chat:RAG] ✗ All models failed after ${Date.now() - overallStart}ms. Last: ${lastError}`);
   throw new Error(`All LLM models failed. Last error: ${lastError}`);
 }
 

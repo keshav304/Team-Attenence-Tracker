@@ -116,9 +116,12 @@ async function handleComplexQuery(
   input: PipelineInput,
 ): Promise<PipelineOutput> {
   const { question, user, history } = input;
+  const stageStart = Date.now();
 
   // ── Stage 1: LLM Structured Extraction ──────────────────────────
+  console.log('[Chat] Stage 1 — LLM extraction…');
   const extraction = await extractStructured(question, history);
+  console.log(`[Chat] Stage 1 done (${Date.now() - stageStart}ms) — intent=${extraction.intent}, people=[${extraction.people.join(', ')}], time="${extraction.timeRange}"`);
 
   // Handle out-of-scope immediately
   if (extraction.intent === 'out_of_scope') {
@@ -158,6 +161,7 @@ async function handleComplexQuery(
   }
 
   // ── Stage 2: Entity + Time Resolution ───────────────────────────
+  const stage2Start = Date.now();
 
   // Resolve people
   const peopleRefs = extraction.people.length > 0
@@ -177,8 +181,10 @@ async function handleComplexQuery(
 
   // Resolve time
   const dateRange = resolveTimeFromExtracted(extraction, question);
+  console.log(`[Chat] Stage 2 done (${Date.now() - stage2Start}ms) — resolved ${personResult.resolved.length} people, range ${dateRange.startDate}→${dateRange.endDate}`);
 
   // ── Stage 3: Data Retrieval ─────────────────────────────────────
+  const stage3Start = Date.now();
 
   const schedules = await getMultipleUserSchedules(
     personResult.resolved,
@@ -187,8 +193,10 @@ async function handleComplexQuery(
   );
 
   const coverages: DataCoverage[] = schedules.map((s) => s.coverage);
+  console.log(`[Chat] Stage 3 done (${Date.now() - stage3Start}ms) — fetched ${schedules.length} schedules`);
 
   // ── Stage 4: Deterministic Reasoning ────────────────────────────
+  const stage4Start = Date.now();
 
   let result: ReasoningResult | null = null;
 
@@ -363,13 +371,15 @@ async function handleComplexQuery(
       }
     }
   } catch (err) {
-    console.error('Pipeline Stage 4 error:', {
-      question,
+    console.error('[Chat] Stage 4 error:', {
+      question: question.substring(0, 80),
       intent: extraction.intent,
-      error: err instanceof Error ? { message: err.message, stack: err.stack } : err,
+      error: err instanceof Error ? err.message : err,
     });
     throw err;
   }
+
+  console.log(`[Chat] Stage 4 done (${Date.now() - stage4Start}ms) — result=${result ? result.answersIntent : 'null'}`);
 
   // ── Stage 5: Relevance Guard ────────────────────────────────────
 
@@ -426,10 +436,14 @@ export async function processQuestion(
 ): Promise<PipelineOutput> {
   const { question, user, history } = input;
   const q = question.trim();
+  const pipelineStart = Date.now();
+
+  console.log(`[Chat] ── Question: "${q.substring(0, 120)}" (user: ${user.name})`);
 
   // ── Stage 0: Heuristic Router ───────────────────────────────────
 
   const routing = routeQuestion(q);
+  console.log(`[Chat] Stage 0 — Route: path=${routing.path}, simpleIntent=${routing.simpleIntent}, signals=[${routing.signals.join(', ')}]`);
 
   if (routing.path === 'fast') {
     // Use existing deterministic handlers
@@ -438,6 +452,7 @@ export async function processQuestion(
       if (handler) {
         const answer = await handler(q, user);
         if (answer) {
+          console.log(`[Chat] ✓ Fast path answered in ${Date.now() - pipelineStart}ms`);
           return {
             answer,
             intent: routing.simpleIntent,
@@ -446,7 +461,7 @@ export async function processQuestion(
         }
       }
     } catch (err) {
-      console.warn('Pipeline: fast path handler failed, falling through to slow path:', err);
+      console.warn('[Chat] Fast path handler failed, falling through to slow path:', err instanceof Error ? err.message : err);
     }
     // If fast path returns null, fall through to slow path
   }
@@ -454,9 +469,12 @@ export async function processQuestion(
   // ── Slow path: full LLM pipeline ───────────────────────────────
 
   try {
-    return await handleComplexQuery(input);
+    console.log('[Chat] Entering slow (LLM) path…');
+    const result = await handleComplexQuery(input);
+    console.log(`[Chat] ✓ Slow path completed in ${Date.now() - pipelineStart}ms — intent=${result.intent}`);
+    return result;
   } catch (err) {
-    console.error('Pipeline: slow path failed:', err);
+    console.error(`[Chat] ✗ Slow path failed after ${Date.now() - pipelineStart}ms:`, err instanceof Error ? err.message : err);
     return {
       answer: 'Sorry, I encountered an error processing your question. Please try again or rephrase your query.',
       intent: 'unknown' as Intent,
