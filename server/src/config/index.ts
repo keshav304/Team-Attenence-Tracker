@@ -15,7 +15,8 @@ interface Config {
   jwtSecret: string;
   jwtExpiresIn: string;
   clientUrl: string;
-  /** "openrouter" | "nvidia" — controls which LLM backend is used */
+  /** "openrouter" | "nvidia" | "race" — controls which LLM backend is used.
+   *  "race" fires both providers in parallel and uses the fastest response. */
   llmProvider: string;
   openRouterApiKey: string;
   nvidiaApiKey: string;

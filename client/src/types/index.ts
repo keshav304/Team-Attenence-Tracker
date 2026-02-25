@@ -219,9 +219,43 @@ export interface TodayStatusResponse {
 // ─── Workbot / Schedule Assistant ────────────
 export type WorkbotStatus = StatusType | 'clear';
 
+/** Tool call structure emitted by the LLM agent */
+export interface WorkbotToolCall {
+  tool: string;
+  params: Record<string, unknown>;
+}
+
+/** Common optional fields shared by all WorkbotAction shapes */
+interface WorkbotActionBase {
+  note?: string;
+  filterByCurrentStatus?: 'office' | 'leave' | 'wfh';
+  referenceUser?: string;
+  referenceCondition?: 'present' | 'absent';
+}
+
+/**
+ * WorkbotAction enforces an inclusive OR: at least one of `toolCall` or
+ * `dateExpressions` must be present, but both may coexist.
+ *
+ * The {@link WorkbotAction} union is split across four branches (set/clear ×
+ * toolCall/dateExpressions) so that TypeScript rejects any shape where both
+ * fields are omitted.  Each branch extends {@link WorkbotActionBase} for
+ * shared optional fields like `note`, `referenceUser`, etc.
+ *
+ * Allowed combinations:
+ *  - `toolCall` only
+ *  - `dateExpressions` only
+ *  - both `toolCall` and `dateExpressions`
+ */
 export type WorkbotAction =
-  | { type: 'set'; status: WorkbotStatus; dateExpressions: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh'; referenceUser?: string; referenceCondition?: 'present' | 'absent' }
-  | { type: 'clear'; dateExpressions: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh'; referenceUser?: string; referenceCondition?: 'present' | 'absent' };
+  // 'set' with toolCall (dateExpressions optional)
+  | { type: 'set'; status: WorkbotStatus; toolCall: WorkbotToolCall; dateExpressions?: string[] } & WorkbotActionBase
+  // 'set' with dateExpressions (toolCall optional)
+  | { type: 'set'; status: WorkbotStatus; dateExpressions: string[]; toolCall?: WorkbotToolCall } & WorkbotActionBase
+  // 'clear' with toolCall (dateExpressions optional)
+  | { type: 'clear'; toolCall: WorkbotToolCall; dateExpressions?: string[] } & WorkbotActionBase
+  // 'clear' with dateExpressions (toolCall optional)
+  | { type: 'clear'; dateExpressions: string[]; toolCall?: WorkbotToolCall } & WorkbotActionBase;
 
 export interface WorkbotPlan {
   actions: WorkbotAction[];

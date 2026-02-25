@@ -337,6 +337,79 @@ async function callOpenRouter(systemPrompt, userMessage) {
   return { content, ms, model: OPENROUTER_MODEL };
 }
 
+/**
+ * Race mode — fire NVIDIA + OpenRouter in parallel via Promise.any().
+ * Returns whichever responds first with a valid answer.
+ */
+async function callRace(systemPrompt, userMessage) {
+  const raceStart = Date.now();
+  const raceAbort = new AbortController();
+  const RACE_TIMEOUT = 60_000;
+
+  const makeCall = async (label, baseUrl, model, extraHeaders) => {
+    const signal = AbortSignal.any
+      ? AbortSignal.any([AbortSignal.timeout(RACE_TIMEOUT), raceAbort.signal])
+      : raceAbort.signal;
+    const start = Date.now();
+    try {
+      const res = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...extraHeaders,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          max_tokens: 2048,
+          temperature: 0.1,
+          top_p: 1.0,
+        }),
+        signal,
+      });
+      const ms = Date.now() - start;
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`[${label}] HTTP ${res.status}: ${err.substring(0, 200)}`);
+      }
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content?.trim() || '';
+      if (!content) throw new Error(`[${label}] Empty response`);
+      return { content, ms, model, winner: label };
+    } catch (err) {
+      const ms = Date.now() - start;
+      if (err.name === 'AbortError' && raceAbort.signal.aborted) {
+        throw new Error(`[${label}] Lost race (aborted)`);
+      }
+      throw new Error(`[${label}] ${err.message} (${ms}ms)`);
+    }
+  };
+
+  try {
+    const result = await Promise.any([
+      makeCall('NVIDIA', NVIDIA_BASE, NVIDIA_MODEL, {
+        Authorization: `Bearer ${NVIDIA_API_KEY}`,
+      }),
+      makeCall('OPENROUTER', OPENROUTER_BASE, OPENROUTER_MODEL, {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer': CLIENT_URL,
+        'X-Title': 'A-Team-Tracker-Benchmark',
+      }),
+    ]);
+    raceAbort.abort(); // cancel the loser
+    const totalMs = Date.now() - raceStart;
+    console.log(`    🏆 Race winner: ${result.winner} (${result.ms}ms, total race: ${totalMs}ms)`);
+    return { ...result, ms: totalMs };
+  } catch (aggErr) {
+    const totalMs = Date.now() - raceStart;
+    const errors = aggErr.errors?.map(e => e.message).join(' | ') || aggErr.message;
+    return { error: `All providers failed: ${errors}`, ms: totalMs, model: 'race' };
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  JSON parser                                                       */
 /* ------------------------------------------------------------------ */
@@ -402,10 +475,31 @@ function evaluate(testCase, parsed) {
   }
 
   // 3. Date expressions contain expected time range
+  //    The LLM may return legacy dateExpressions OR the newer toolCall format.
+  //    Build a combined search string from both so the evaluator works either way.
   const dateExps = (action.dateExpressions || []).join(' ').toLowerCase();
+
+  // Extract time-range info from toolCall params (agent format)
+  let toolTimeHint = '';
+  if (action.toolCall && typeof action.toolCall === 'object') {
+    const p = action.toolCall.params || {};
+    const toolName = (action.toolCall.tool || '').toLowerCase();
+    // period field: "next_month", "this_month", etc.
+    if (p.period) toolTimeHint += ' ' + p.period.replace(/_/g, ' ');
+    // week field: "next_week", "this_week"
+    if (p.week) toolTimeHint += ' ' + p.week.replace(/_/g, ' ');
+    // dates array: ["next Monday", "2026-03-02"]
+    if (Array.isArray(p.dates)) toolTimeHint += ' ' + p.dates.join(' ');
+    // Tool name hints: expand_month → "month", expand_week_period → "week"
+    toolTimeHint += ' ' + toolName.replace(/_/g, ' ');
+    toolTimeHint = toolTimeHint.toLowerCase();
+  }
+
+  const combinedDateInfo = (dateExps + ' ' + toolTimeHint).trim();
+
   let dateOk = false;
   for (const expected of exp.dateExpContains) {
-    if (dateExps.includes(expected)) {
+    if (combinedDateInfo.includes(expected)) {
       dateOk = true;
       break;
     }
@@ -415,13 +509,13 @@ function evaluate(testCase, parsed) {
   if (!dateOk) {
     // "next month" could be resolved as "March 2026", "every weekday of March 2026", etc.
     if (exp.dateExpContains.includes('next month')) {
-      dateOk = dateExps.includes('march') || dateExps.includes('2026-03');
+      dateOk = combinedDateInfo.includes('march') || combinedDateInfo.includes('2026-03') || combinedDateInfo.includes('next month');
     }
     if (exp.dateExpContains.includes('next week')) {
-      dateOk = dateExps.includes('2026-03-0') || dateExps.includes('march');
+      dateOk = combinedDateInfo.includes('2026-03-0') || combinedDateInfo.includes('march') || combinedDateInfo.includes('next week');
     }
     if (exp.dateExpContains.includes('this month')) {
-      dateOk = dateExps.includes('february') || dateExps.includes('2026-02');
+      dateOk = combinedDateInfo.includes('february') || combinedDateInfo.includes('2026-02') || combinedDateInfo.includes('this month');
     }
   }
 
@@ -492,13 +586,14 @@ async function runAllTests() {
 
   console.log(`\nStarting Workbot LLM Benchmark at ${new Date().toISOString()}\n`);
   console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║       WORKBOT LLM PARSING BENCHMARK — 10 Queries          ║');
-  console.log('║    Testing NVIDIA & OpenRouter Structured JSON Output     ║');
+  console.log('║    WORKBOT LLM PARSING BENCHMARK — 10 Queries + Race       ║');
+  console.log('║   Testing NVIDIA / OpenRouter / Race Structured Output     ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');
 
   const nvidiaResults = [];
   const openRouterResults = [];
+  const raceResults = [];
 
   for (const tc of TEST_CASES) {
     console.log('══════════════════════════════════════════════════════════════════════');
@@ -574,17 +669,49 @@ async function runAllTests() {
       openRouterResults.push({ id: tc.id, status: 'FAIL', failures: ['Exception'], ms: 0, checks: [] });
     }
 
+    // Race (NVIDIA + OpenRouter in parallel)
+    console.log('\n  🏁 RACE (NVIDIA vs OpenRouter):');
+    try {
+      const raceResult = await callRace(systemPrompt, tc.command);
+      if (raceResult.error) {
+        console.log(`  ERROR: ${raceResult.error} (${raceResult.ms}ms)`);
+        raceResults.push({ id: tc.id, status: 'FAIL', failures: ['Race failed'], ms: raceResult.ms });
+      } else {
+        const parsed = extractJSON(raceResult.content);
+        console.log(`  Winner: ${raceResult.winner}, Model: ${raceResult.model} (${raceResult.ms}ms)`);
+
+        if (parsed) {
+          const action = parsed.actions?.[0];
+          console.log(`  JSON: type="${action?.type}", status="${action?.status}"`);
+          console.log(`  DateExps: ${JSON.stringify(action?.dateExpressions || [])}`);
+          if (action?.referenceUser) console.log(`  ReferenceUser: ${action.referenceUser}, Condition: ${action.referenceCondition}`);
+          if (parsed.targetUser) console.log(`  ⚠ targetUser: "${parsed.targetUser}" (WILL BLOCK!)`);
+          console.log(`  Summary: "${(parsed.summary || '').substring(0, 80)}"`);
+        } else {
+          console.log(`  ⚠ Could not parse JSON from: ${raceResult.content.substring(0, 200)}`);
+        }
+
+        const evalResult = evaluate(tc, parsed);
+        console.log(`  Result: ${evalResult.status}`);
+        evalResult.checks.forEach(c => console.log(`    ${c}`));
+        raceResults.push({ id: tc.id, ...evalResult, ms: raceResult.ms, winner: raceResult.winner });
+      }
+    } catch (err) {
+      console.log(`  ERROR: ${err.message}`);
+      raceResults.push({ id: tc.id, status: 'FAIL', failures: ['Exception'], ms: 0, checks: [] });
+    }
+
     console.log('');
   }
 
-  printSummary(nvidiaResults, openRouterResults);
+  printSummary(nvidiaResults, openRouterResults, raceResults);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Summary                                                           */
 /* ------------------------------------------------------------------ */
 
-function printSummary(nvidiaResults, openRouterResults) {
+function printSummary(nvidiaResults, openRouterResults, raceResults) {
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║                   FINAL EVALUATION SUMMARY                 ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
@@ -592,6 +719,7 @@ function printSummary(nvidiaResults, openRouterResults) {
   for (const [label, results, model] of [
     ['NVIDIA', nvidiaResults, NVIDIA_MODEL],
     ['OPENROUTER', openRouterResults, OPENROUTER_MODEL],
+    ['RACE', raceResults, 'fastest-wins'],
   ]) {
     const pass = results.filter(r => r.status === 'PASS').length;
     const partial = results.filter(r => r.status === 'PARTIAL').length;
@@ -631,32 +759,51 @@ function printSummary(nvidiaResults, openRouterResults) {
     });
   }
 
-  // Head-to-head
-  console.log('\n════════════════════════════════════════════════════════════');
-  console.log('  HEAD-TO-HEAD COMPARISON');
-  console.log('════════════════════════════════════════════════════════════');
-  console.log('  Q#    NVIDIA       OPENROUTER   Winner');
-  console.log('  ─────────────────────────────────────────────');
+  // Race winner distribution
+  const raceWinners = raceResults.reduce((acc, r) => {
+    if (r.winner) acc[r.winner] = (acc[r.winner] || 0) + 1;
+    return acc;
+  }, {});
+  console.log('\n═══════════════════════════════════════════════════════════════');
+  console.log('  RACE MODE STATS');
+  console.log('═══════════════════════════════════════════════════════════════');
+  const racePass = raceResults.filter(r => r.status === 'PASS').length;
+  const raceAvg = Math.round(raceResults.reduce((s, r) => s + (r.ms || 0), 0) / (raceResults.length || 1));
+  console.log(`  Race Results:  ${racePass}/${raceResults.length} PASS (${Math.round(racePass / (raceResults.length || 1) * 100)}%)`);
+  console.log(`  Race Avg Latency: ${raceAvg}ms`);
+  console.log(`  Race Winners:  ${Object.entries(raceWinners).map(([k, v]) => `${k}: ${v}`).join(', ') || 'none'}`);
 
-  let nvWins = 0, orWins = 0, ties = 0;
+  // Head-to-head
+  console.log('\n═══════════════════════════════════════════════════════════════');
+  console.log('  HEAD-TO-HEAD COMPARISON (incl. Race)');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('  Q#    NVIDIA       OPENROUTER   RACE         Best');
+  console.log('  ─────────────────────────────────────────────────────────');
+
+  let nvWins = 0, orWins = 0, rcWins = 0, ties = 0;
   const statusRank = { PASS: 3, PARTIAL: 2, FAIL: 1 };
 
   for (const tc of TEST_CASES) {
     const nv = nvidiaResults.find(r => r.id === tc.id);
     const or = openRouterResults.find(r => r.id === tc.id);
+    const rc = raceResults.find(r => r.id === tc.id);
     const nvR = statusRank[nv?.status] || 0;
     const orR = statusRank[or?.status] || 0;
+    const rcR = statusRank[rc?.status] || 0;
 
-    let winner = 'TIE';
-    if (nvR > orR) { winner = 'NVIDIA'; nvWins++; }
-    else if (orR > nvR) { winner = 'OPENROUTER'; orWins++; }
+    const maxR = Math.max(nvR, orR, rcR);
+    let best = 'TIE';
+    if (maxR === nvR && maxR > orR && maxR > rcR) { best = 'NVIDIA'; nvWins++; }
+    else if (maxR === orR && maxR > nvR && maxR > rcR) { best = 'OPENROUTER'; orWins++; }
+    else if (maxR === rcR && maxR > nvR && maxR > orR) { best = 'RACE'; rcWins++; }
     else { ties++; }
 
-    console.log(`  Q${tc.id.toString().padEnd(4)} ${(nv?.status || '?').padEnd(12)} ${(or?.status || '?').padEnd(12)} ${winner}`);
+    console.log(`  Q${tc.id}   ${(nv?.status || '?').padEnd(12)} ${(or?.status || '?').padEnd(12)} ${(rc?.status || '?').padEnd(12)} ${best}`);
   }
 
   console.log(`\n  NVIDIA Wins:     ${nvWins}`);
   console.log(`  OpenRouter Wins: ${orWins}`);
+  console.log(`  Race Wins:       ${rcWins}`);
   console.log(`  Ties:            ${ties}`);
 
   // Critical check: targetUser false positives
@@ -686,8 +833,17 @@ function printSummary(nvidiaResults, openRouterResults) {
 
   const nvPass = nvidiaResults.filter(r => r.status === 'PASS').length;
   const orPass = openRouterResults.filter(r => r.status === 'PASS').length;
-  console.log(`\n  Overall: NVIDIA ${nvPass}/10 (${nvPass * 10}%) | OpenRouter ${orPass}/10 (${orPass * 10}%)`);
-  console.log(`  Winner: ${nvPass > orPass ? 'NVIDIA' : orPass > nvPass ? 'OpenRouter' : 'TIE'}\n`);
+  const rcPass = raceResults.filter(r => r.status === 'PASS').length;
+  const nvAvg = Math.round(nvidiaResults.reduce((s, r) => s + (r.ms || 0), 0) / (nvidiaResults.length || 1));
+  const orAvg = Math.round(openRouterResults.reduce((s, r) => s + (r.ms || 0), 0) / (openRouterResults.length || 1));
+  const rcAvg = Math.round(raceResults.reduce((s, r) => s + (r.ms || 0), 0) / (raceResults.length || 1));
+  console.log(`\n  Overall Accuracy:`);
+  console.log(`    NVIDIA:     ${nvPass}/10 (${nvPass * 10}%) — avg ${nvAvg}ms`);
+  console.log(`    OpenRouter: ${orPass}/10 (${orPass * 10}%) — avg ${orAvg}ms`);
+  console.log(`    Race:       ${rcPass}/10 (${rcPass * 10}%) — avg ${rcAvg}ms`);
+  const scores = [['NVIDIA', nvPass, nvAvg], ['OpenRouter', orPass, orAvg], ['Race', rcPass, rcAvg]];
+  scores.sort((a, b) => b[1] - a[1] || a[2] - b[2]);
+  console.log(`  Best: ${scores[0][0]} (${scores[0][1]} PASS, ${scores[0][2]}ms avg)\n`);
 
   console.log(`Benchmark completed at ${new Date().toISOString()}\n`);
 }
