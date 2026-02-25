@@ -23,7 +23,13 @@ export const getNotifications = async (
       .limit(50)
       .lean();
 
-    res.json({ success: true, data: notifications });
+    // Map sourceUserId → sourceUser to match frontend expectations
+    const mapped = notifications.map(({ sourceUserId, ...rest }) => ({
+      ...rest,
+      sourceUser: sourceUserId,
+    }));
+
+    res.json({ success: true, data: mapped });
   } catch (error) {
     next(error);
   }

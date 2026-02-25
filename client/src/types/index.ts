@@ -219,9 +219,15 @@ export interface TodayStatusResponse {
 // ─── Workbot / Schedule Assistant ────────────
 export type WorkbotStatus = StatusType | 'clear';
 
+/** Tool call structure emitted by the LLM agent */
+export interface WorkbotToolCall {
+  tool: string;
+  params: Record<string, unknown>;
+}
+
 export type WorkbotAction =
-  | { type: 'set'; status: WorkbotStatus; dateExpressions: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh'; referenceUser?: string; referenceCondition?: 'present' | 'absent' }
-  | { type: 'clear'; dateExpressions: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh'; referenceUser?: string; referenceCondition?: 'present' | 'absent' };
+  | { type: 'set'; status: WorkbotStatus; toolCall?: WorkbotToolCall; dateExpressions?: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh'; referenceUser?: string; referenceCondition?: 'present' | 'absent' }
+  | { type: 'clear'; toolCall?: WorkbotToolCall; dateExpressions?: string[]; note?: string; filterByCurrentStatus?: 'office' | 'leave' | 'wfh'; referenceUser?: string; referenceCondition?: 'present' | 'absent' };
 
 export interface WorkbotPlan {
   actions: WorkbotAction[];

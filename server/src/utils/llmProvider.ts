@@ -1,7 +1,11 @@
 /**
  * Unified LLM Provider — supports OpenRouter and NVIDIA NIM APIs.
  *
- * Switch between providers using the LLM_PROVIDER env var ("openrouter" | "nvidia").
+ * Switch between providers using the LLM_PROVIDER env var:
+ *   "openrouter" — OpenRouter only (sequential model fallback)
+ *   "nvidia"     — NVIDIA NIM only (sequential model fallback)
+ *   "race"       — Fire both providers in parallel, use fastest response
+ *
  * All LLM callers should use `callLLMProvider()` instead of making direct fetch calls.
  */
 
@@ -31,7 +35,7 @@ export interface LLMCallOptions {
   logPrefix?: string;
 }
 
-export type LLMProvider = 'openrouter' | 'nvidia';
+export type LLMProvider = 'openrouter' | 'nvidia' | 'race';
 
 /* ------------------------------------------------------------------ */
 /*  Model lists                                                       */
@@ -140,6 +144,7 @@ function getProviderConfig(provider: LLMProvider): ProviderConfig {
 export function getActiveProvider(): LLMProvider {
   const env = config.llmProvider?.toLowerCase();
   if (env === 'nvidia') return 'nvidia';
+  if (env === 'race') return 'race';
   return 'openrouter';
 }
 
@@ -148,12 +153,14 @@ export function getActiveProvider(): LLMProvider {
 /* ------------------------------------------------------------------ */
 
 /**
- * Call the configured LLM provider. Tries models in order until one
- * succeeds with a non-empty response.
- *
- * Handles rate-limiting, timeouts, empty responses, and model fallback.
+ * Call a single provider, trying models sequentially until one succeeds.
+ * Extracted as a helper so the race mode can invoke two providers in parallel.
  */
-export async function callLLMProvider(opts: LLMCallOptions): Promise<string> {
+async function callSingleProvider(
+  provider: 'openrouter' | 'nvidia',
+  opts: LLMCallOptions,
+  raceAbort?: AbortController,
+): Promise<string> {
   const {
     messages,
     maxTokens = 1024,
@@ -163,21 +170,29 @@ export async function callLLMProvider(opts: LLMCallOptions): Promise<string> {
     logPrefix = 'LLM',
   } = opts;
 
-  const provider = getActiveProvider();
   const providerCfg = getProviderConfig(provider);
 
   if (!providerCfg.apiKey) {
     const keyName = provider === 'nvidia' ? 'NVIDIA_API_KEY' : 'OPENROUTER_API_KEY';
-    throw new Error(`${keyName} is not configured (LLM_PROVIDER=${provider})`);
+    throw new Error(`${keyName} is not configured (provider=${provider})`);
   }
 
   let lastError = '';
   const overallStart = Date.now();
 
   for (const model of providerCfg.models) {
+    // If the race was already won by the other provider, bail out early
+    if (raceAbort?.signal.aborted) {
+      throw new Error(`[${provider}] Aborted — other provider won the race`);
+    }
+
     const modelStart = Date.now();
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeoutMs);
+
+    // Link to the race-level abort if present
+    const onRaceAbort = () => ac.abort();
+    raceAbort?.signal.addEventListener('abort', onRaceAbort, { once: true });
 
     try {
       const body: Record<string, unknown> = {
@@ -189,7 +204,6 @@ export async function callLLMProvider(opts: LLMCallOptions): Promise<string> {
         ...providerCfg.bodyExtras(model),
       };
 
-      // JSON mode — OpenRouter supports response_format, NVIDIA may not for all models
       if (jsonMode && provider === 'openrouter') {
         body.response_format = { type: 'json_object' };
       }
@@ -201,6 +215,7 @@ export async function callLLMProvider(opts: LLMCallOptions): Promise<string> {
         signal: ac.signal,
       });
       clearTimeout(timer);
+      raceAbort?.signal.removeEventListener('abort', onRaceAbort);
 
       if (res.status === 429) {
         await res.text();
@@ -242,7 +257,12 @@ export async function callLLMProvider(opts: LLMCallOptions): Promise<string> {
       console.log(`[${logPrefix}] ✗ [${provider}] ${model} → empty response (${Date.now() - modelStart}ms)`);
     } catch (err: unknown) {
       clearTimeout(timer);
-      if (err instanceof Error && (err.name === 'AbortError' || (err as any).name === 'AbortError')) {
+      raceAbort?.signal.removeEventListener('abort', onRaceAbort);
+      if (err instanceof Error && err.name === 'AbortError') {
+        // Could be race abort or timeout
+        if (raceAbort?.signal.aborted) {
+          throw new Error(`[${provider}] Aborted — other provider won the race`);
+        }
         lastError = `Timeout after ${timeoutMs / 1000}s (${model})`;
         console.log(`[${logPrefix}] ✗ [${provider}] ${model} → timeout after ${timeoutMs}ms`);
       } else {
@@ -252,6 +272,73 @@ export async function callLLMProvider(opts: LLMCallOptions): Promise<string> {
     }
   }
 
-  console.log(`[${logPrefix}] ✗ [${provider}] All models failed after ${Date.now() - overallStart}ms. Last: ${lastError}`);
-  throw new Error(`All LLM models failed (provider: ${provider}). Last error: ${lastError}`);
+  throw new Error(`[${provider}] All models failed. Last: ${lastError}`);
+}
+
+/**
+ * Race mode: fire both NVIDIA and OpenRouter in parallel.
+ * Returns the first successful response; aborts the slower provider.
+ * Falls back to sequential single-provider if only one API key is set.
+ */
+async function callRace(opts: LLMCallOptions): Promise<string> {
+  const logPrefix = opts.logPrefix || 'LLM';
+  const hasNvidia = !!getProviderConfig('nvidia').apiKey;
+  const hasOpenRouter = !!getProviderConfig('openrouter').apiKey;
+
+  // Degrade gracefully to single provider if only one key is available
+  if (hasNvidia && !hasOpenRouter) return callSingleProvider('nvidia', opts);
+  if (hasOpenRouter && !hasNvidia) return callSingleProvider('openrouter', opts);
+  if (!hasNvidia && !hasOpenRouter) {
+    throw new Error('Neither NVIDIA_API_KEY nor OPENROUTER_API_KEY is configured');
+  }
+
+  const raceAbort = new AbortController();
+  const raceStart = Date.now();
+
+  console.log(`[${logPrefix}] 🏁 [race] Firing NVIDIA + OpenRouter in parallel…`);
+
+  try {
+    // Promise.any resolves with the first fulfilled promise;
+    // all rejections are collected into an AggregateError.
+    const result = await Promise.any([
+      callSingleProvider('nvidia', opts, raceAbort).then((answer) => {
+        raceAbort.abort(); // cancel the loser
+        console.log(`[${logPrefix}] 🏆 [race] Winner: NVIDIA (${Date.now() - raceStart}ms)`);
+        return answer;
+      }),
+      callSingleProvider('openrouter', opts, raceAbort).then((answer) => {
+        raceAbort.abort(); // cancel the loser
+        console.log(`[${logPrefix}] 🏆 [race] Winner: OpenRouter (${Date.now() - raceStart}ms)`);
+        return answer;
+      }),
+    ]);
+    return result;
+  } catch (aggErr) {
+    // Both providers failed
+    const errors = (aggErr as AggregateError)?.errors ?? [aggErr];
+    const summary = errors.map((e: unknown) => (e instanceof Error ? e.message : String(e))).join(' | ');
+    console.log(`[${logPrefix}] ✗ [race] Both providers failed after ${Date.now() - raceStart}ms: ${summary}`);
+    throw new Error(`All LLM providers failed (race mode). Errors: ${summary}`);
+  }
+}
+
+/**
+ * Call the configured LLM provider. Tries models in order until one
+ * succeeds with a non-empty response.
+ *
+ * In "race" mode, fires both NVIDIA and OpenRouter in parallel and
+ * returns whichever responds first with a valid answer.
+ *
+ * Handles rate-limiting, timeouts, empty responses, and model fallback.
+ */
+export async function callLLMProvider(opts: LLMCallOptions): Promise<string> {
+  const provider = getActiveProvider();
+
+  // Race mode — fire both providers in parallel
+  if (provider === 'race') {
+    return callRace(opts);
+  }
+
+  // Single-provider mode
+  return callSingleProvider(provider, opts);
 }
