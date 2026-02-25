@@ -56,18 +56,21 @@ const OPENROUTER_MODELS = [
 /**
  * NVIDIA NIM models (tried in order).
  * Free-tier models available at https://build.nvidia.com
- * Ordered by speed + reliability — fast proven models first, large reasoning last.
+ * Benchmarked 2026-02-25 — ordered by speed + reliability.
+ *
+ *  #  Model                                Avg ms   Reliability
+ *  1  meta/llama-3.3-70b-instruct          1,075    3/3  ← fastest
+ *  2  google/gemma-3-27b-it                1,547    3/3
+ *  3  mistralai/mistral-nemotron           1,839    3/3
+ *  4  nvidia/llama-3.1-nemotron-ultra-253b 2,156    3/3  ← strongest reasoning
+ *  5  nvidia/nemotron-3-nano-30b-a3b       3,555    3/3  ← lightweight fallback
  */
 const NVIDIA_MODELS = [
-  'meta/llama-3.3-70b-instruct',                      // proven fast (~1s), strong instruction following
-  'nvidia/llama-3.3-nemotron-super-49b-v1.5',         // high efficiency, leading accuracy, function calling
-  'deepseek-ai/deepseek-v3.1',                        // hybrid reasoning, 128K context, tool use
-  'qwen/qwen3-235b-a22b',                             // 235B MoE, advanced reasoning + math
-  'nvidia/llama-3.1-nemotron-ultra-253b-v1',          // 253B, superior reasoning + coding
-  'z-ai/glm4.7',                                      // multilingual agentic, tool use, reasoning
-  'mistralai/mistral-nemotron',                        // agentic workflows, instruction + function calling
-  'google/gemma-3-27b-it',                             // reliable mid-size fallback
-  'nvidia/nemotron-3-nano-30b-a3b',                    // lightweight 30B MoE, 1M context, last resort
+  'meta/llama-3.3-70b-instruct',                      // ~1s avg, clean JSON, best overall
+  'google/gemma-3-27b-it',                             // ~1.5s avg, reliable mid-size
+  'mistralai/mistral-nemotron',                        // ~1.8s avg, good instruction following
+  'nvidia/llama-3.1-nemotron-ultra-253b-v1',          // ~2.2s avg, strongest reasoning
+  'nvidia/nemotron-3-nano-30b-a3b',                    // ~3.5s avg, lightweight last resort
 ];
 
 /* ------------------------------------------------------------------ */
