@@ -234,9 +234,18 @@ interface WorkbotActionBase {
 }
 
 /**
- * WorkbotAction enforces an XOR: at least one of toolCall or dateExpressions
- * must be present.  The union is split so TypeScript prevents shapes where
- * both are omitted.
+ * WorkbotAction enforces an inclusive OR: at least one of `toolCall` or
+ * `dateExpressions` must be present, but both may coexist.
+ *
+ * The {@link WorkbotAction} union is split across four branches (set/clear ×
+ * toolCall/dateExpressions) so that TypeScript rejects any shape where both
+ * fields are omitted.  Each branch extends {@link WorkbotActionBase} for
+ * shared optional fields like `note`, `referenceUser`, etc.
+ *
+ * Allowed combinations:
+ *  - `toolCall` only
+ *  - `dateExpressions` only
+ *  - both `toolCall` and `dateExpressions`
  */
 export type WorkbotAction =
   // 'set' with toolCall (dateExpressions optional)

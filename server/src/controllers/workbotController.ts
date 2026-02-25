@@ -199,6 +199,57 @@ Respond ONLY with valid JSON. No markdown, no code fences, no explanation.`;
 }
 
 /**
+ * Attempt to synthesize a human-readable date expression from a failed toolCall's
+ * tool name and params, so it can be re-resolved via `resolveDateExpressions`.
+ * Returns null if synthesis is not possible.
+ */
+function synthesizeDateExpression(toolCall: { tool: string; params?: Record<string, unknown> }): string | null {
+  const p = toolCall.params ?? {};
+  const period = typeof p.period === 'string' ? p.period.replace(/_/g, ' ') : null;
+  const week = typeof p.week === 'string' ? p.week.replace(/_/g, ' ') : null;
+
+  switch (toolCall.tool) {
+    case 'expand_month':
+      return period ?? null; // "next month" or "this month"
+    case 'expand_weeks':
+      return period
+        ? `${typeof p.position === 'string' ? p.position + ' ' : ''}${typeof p.count === 'number' ? p.count + ' ' : ''}weeks of ${period}`
+        : null;
+    case 'expand_working_days':
+      return period
+        ? `${typeof p.position === 'string' ? p.position + ' ' : ''}${typeof p.count === 'number' ? p.count + ' ' : ''}working days of ${period}`
+        : null;
+    case 'expand_day_of_week':
+      return period && typeof p.day === 'string' ? `every ${p.day} ${period}` : null;
+    case 'expand_half_month':
+      return period && typeof p.half === 'string' ? `${p.half} half of ${period}` : null;
+    case 'expand_week_period':
+      return week ?? null; // "next week" or "this week"
+    case 'expand_rest_of_month':
+      return 'rest of this month';
+    case 'expand_alternate':
+      return period ? `every alternate day ${period}` : null;
+    case 'expand_range':
+      return period && typeof p.start_day === 'number' && typeof p.end_day === 'number'
+        ? `${p.start_day} to ${p.end_day} of ${period}`
+        : null;
+    case 'expand_except':
+      return period && typeof p.exclude_day === 'string'
+        ? `all weekdays ${period} except ${p.exclude_day}`
+        : null;
+    case 'resolve_dates':
+      // Individual date tokens — return them joined
+      if (Array.isArray(p.dates)) {
+        const strs = p.dates.filter((d): d is string => typeof d === 'string');
+        return strs.length > 0 ? strs.join(', ') : null;
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
  * Resolve date expressions to concrete YYYY-MM-DD dates.
  */
 function resolveDateExpressions(expressions: string[], todayStr: string): string[] {
@@ -608,18 +659,10 @@ function resolveDateExpressions(expressions: string[], todayStr: string): string
       continue;
     }
 
-    // Fallback: if expression mentions "next month" or "this month", resolve all weekdays
-    // This catches expressions the LLM generates that don't match a specific handler
+    // Reject ambiguous unrecognised expressions that merely mention "next month"
+    // or "this month" — do NOT silently expand to all weekdays.
     if (lower.includes('next month') || lower.includes('this month')) {
-      const isNext = lower.includes('next month');
-      const { year, month } = getMonthYearForPeriod(today, isNext ? 'next month' : 'this month');
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      for (let i = 1; i <= daysInMonth; i++) {
-        const d = new Date(year, month, i);
-        if (d.getDay() !== 0 && d.getDay() !== 6) dates.add(fmtDate(d));
-      }
-      console.warn(`[Workbot] Fuzzy-matched date expression "${expr}" → all weekdays of ${isNext ? 'next' : 'this'} month`);
-      continue;
+      console.warn(`[Workbot] Rejecting ambiguous date expression containing month reference: "${expr}" — falling through to unrecognized handler`);
     }
 
     // No fallback — reject ambiguous or unrecognised expressions
@@ -858,16 +901,56 @@ export const resolvePlan = async (
     for (const action of actions) {
       let dates: string[] = [];
       if (action.toolCall) {
-        // Agent path: execute the tool directly
-        const result = executeDateTool(action.toolCall, todayStr);
-        if (result.success) {
-          dates = result.dates;
-          console.log(`[Workbot] Tool "${action.toolCall.tool}" resolved ${dates.length} dates`);
-        } else {
-          console.warn(`[Workbot] Tool "${action.toolCall.tool}" failed: ${result.error}. Falling back to regex.`);
-          // Fall back to legacy if tool failed and dateExpressions exist
+        // Validate toolCall shape before execution
+        if (
+          typeof action.toolCall !== 'object' ||
+          action.toolCall === null ||
+          typeof action.toolCall.tool !== 'string' ||
+          !action.toolCall.tool ||
+          (action.toolCall.params != null && typeof action.toolCall.params !== 'object')
+        ) {
+          console.warn(`[Workbot] Malformed toolCall for action, skipping tool path:`, JSON.stringify(action.toolCall));
+          // Fall through to dateExpressions if available
           if (action.dateExpressions && action.dateExpressions.length > 0) {
             dates = resolveDateExpressions(action.dateExpressions, todayStr);
+            console.log(`[Workbot] Fallback dateExpressions resolved ${dates.length} dates`);
+          } else {
+            console.warn(`[Workbot] No dateExpressions fallback available for malformed toolCall.`);
+            actionsWithDates.push({ action, dates: [] });
+            allResolvedDates.push(...dates);
+            continue;
+          }
+        } else {
+          // Agent path: execute the tool directly
+          let result: DateToolResult;
+          try {
+            result = executeDateTool(action.toolCall, todayStr);
+          } catch (toolErr) {
+            console.warn(`[Workbot] Tool "${action.toolCall.tool}" threw: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`);
+            result = { success: false, dates: [], description: '', error: String(toolErr) };
+          }
+          if (result.success) {
+            dates = result.dates;
+            console.log(`[Workbot] Tool "${action.toolCall.tool}" resolved ${dates.length} dates`);
+          } else {
+            console.warn(`[Workbot] Tool "${action.toolCall.tool}" failed: ${result.error}. Attempting fallback.`);
+            // Try to synthesize a human-readable date expression from toolCall params
+            const synthesized = synthesizeDateExpression(action.toolCall);
+            if (synthesized) {
+              console.log(`[Workbot] Synthesized expression from toolCall: "${synthesized}"`);
+              dates = resolveDateExpressions([synthesized], todayStr);
+            }
+            // If synthesis produced no dates, try explicit dateExpressions
+            if (dates.length === 0 && action.dateExpressions && action.dateExpressions.length > 0) {
+              dates = resolveDateExpressions(action.dateExpressions, todayStr);
+            }
+            // If still no dates, surface error instead of silently returning empty
+            if (dates.length === 0) {
+              console.warn(`[Workbot] Tool "${action.toolCall.tool}" failed and no fallback resolved dates.`);
+              actionsWithDates.push({ action, dates: [] });
+              allResolvedDates.push(...dates);
+              continue;
+            }
           }
         }
       } else if (action.dateExpressions && action.dateExpressions.length > 0) {

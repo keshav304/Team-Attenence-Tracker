@@ -314,8 +314,12 @@ async function callRace(opts: LLMCallOptions): Promise<string> {
   try {
     // Promise.any resolves with the first fulfilled promise;
     // all rejections are collected into an AggregateError.
+    // Guard ensures only the first handler to run updates telemetry.
+    let winnerChosen = false;
     const result = await Promise.any([
       callSingleProvider('nvidia', opts, raceAbort).then((answer) => {
+        if (winnerChosen) return answer;
+        winnerChosen = true;
         raceAbort.abort(); // cancel the loser
         const elapsed = Date.now() - raceStart;
         raceMetrics.successes++;
@@ -323,6 +327,8 @@ async function callRace(opts: LLMCallOptions): Promise<string> {
         return answer;
       }),
       callSingleProvider('openrouter', opts, raceAbort).then((answer) => {
+        if (winnerChosen) return answer;
+        winnerChosen = true;
         raceAbort.abort(); // cancel the loser
         const elapsed = Date.now() - raceStart;
         raceMetrics.successes++;

@@ -548,17 +548,55 @@ function expandRestOfMonth(
 /*  Tool parameter validation helper                                  */
 /* ------------------------------------------------------------------ */
 
-/** Lightweight runtime type check for tool params to avoid unsafe `as` casts. */
-function validateToolParams(tool: string, p: Record<string, unknown>, spec: Record<string, string>): void {
-  for (const [key, expectedType] of Object.entries(spec)) {
+/** Param spec entry — either a simple type string or an object with type and optional enum. */
+interface ParamSpec {
+  type: string;
+  enum?: readonly string[];
+  /** When type is 'array', optionally enforce element type (e.g. 'string'). */
+  elementType?: string;
+}
+
+/** Shorthand: plain string → ParamSpec with that type. */
+function normalizeSpec(entry: string | ParamSpec): ParamSpec {
+  return typeof entry === 'string' ? { type: entry } : entry;
+}
+
+/** Lightweight runtime type + enum check for tool params to avoid unsafe `as` casts. */
+function validateToolParams(
+  tool: string,
+  p: Record<string, unknown>,
+  spec: Record<string, string | ParamSpec>,
+): void {
+  for (const [key, rawEntry] of Object.entries(spec)) {
+    const entry = normalizeSpec(rawEntry);
     const val = p[key];
     if (val === undefined || val === null) {
       throw new Error(`${tool}: missing required param "${key}"`);
     }
-    if (expectedType === 'array') {
-      if (!Array.isArray(val)) throw new Error(`${tool}: param "${key}" must be an array, got ${typeof val}`);
-    } else if (typeof val !== expectedType) {
-      throw new Error(`${tool}: param "${key}" must be ${expectedType}, got ${typeof val}`);
+    if (entry.type === 'array') {
+      if (!Array.isArray(val)) {
+        throw new Error(`${tool}: param "${key}" must be an array, got ${typeof val}`);
+      }
+      // Validate element types if specified
+      if (entry.elementType) {
+        for (let i = 0; i < val.length; i++) {
+          if (typeof val[i] !== entry.elementType) {
+            throw new Error(
+              `${tool}: param "${key}"[${i}] must be ${entry.elementType}, got ${typeof val[i]}`,
+            );
+          }
+        }
+      }
+    } else if (typeof val !== entry.type) {
+      throw new Error(`${tool}: param "${key}" must be ${entry.type}, got ${typeof val}`);
+    }
+    // Enum validation
+    if (entry.enum && typeof val === 'string') {
+      if (!entry.enum.includes(val)) {
+        throw new Error(
+          `${tool}: param "${key}" must be one of [${entry.enum.join(', ')}], got "${val}"`,
+        );
+      }
     }
   }
 }
@@ -575,59 +613,93 @@ export function executeDateTool(
   toolCall: DateToolCall,
   todayStr: string,
 ): DateToolResult {
-  // Construct today's date with explicit IST offset so the calendar date is
-  // unambiguous regardless of server timezone.
-  const today = new Date(todayStr + 'T00:00:00+05:30');
+  // Construct today's date from components so local getters reflect the
+  // correct calendar date regardless of server timezone.
+  const [yearStr, monthStr, dayStr] = todayStr.split('-');
+  const today = new Date(Number(yearStr), Number(monthStr) - 1, Number(dayStr));
   const p = toolCall.params;
 
   try {
     switch (toolCall.tool) {
       case 'resolve_dates':
-        validateToolParams('resolve_dates', p, { dates: 'array' });
+        validateToolParams('resolve_dates', p, { dates: { type: 'array', elementType: 'string' } });
         return resolveExplicitDates(today, todayStr, p as { dates: string[] });
 
       case 'expand_month':
-        validateToolParams('expand_month', p, { period: 'string' });
+        validateToolParams('expand_month', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+        });
         return expandMonth(today, p as { period: PeriodRef });
 
       case 'expand_weeks':
-        validateToolParams('expand_weeks', p, { period: 'string', count: 'number', position: 'string' });
+        validateToolParams('expand_weeks', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          count: 'number',
+          position: { type: 'string', enum: ['first', 'last'] },
+        });
         return expandWeeks(today, p as { period: PeriodRef; count: number; position: PositionRef });
 
       case 'expand_working_days':
-        validateToolParams('expand_working_days', p, { period: 'string', count: 'number', position: 'string' });
+        validateToolParams('expand_working_days', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          count: 'number',
+          position: { type: 'string', enum: ['first', 'last'] },
+        });
         return expandWorkingDays(today, p as { period: PeriodRef; count: number; position: PositionRef });
 
       case 'expand_day_of_week':
-        validateToolParams('expand_day_of_week', p, { period: 'string', day: 'string' });
+        validateToolParams('expand_day_of_week', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          day: { type: 'string', enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] },
+        });
         return expandDayOfWeek(today, p as { period: PeriodRef; day: string });
 
       case 'expand_multiple_days_of_week':
-        validateToolParams('expand_multiple_days_of_week', p, { period: 'string', days: 'array' });
+        validateToolParams('expand_multiple_days_of_week', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          days: { type: 'array', elementType: 'string' },
+        });
         return expandMultipleDaysOfWeek(today, p as { period: PeriodRef; days: string[] });
 
       case 'expand_range':
-        validateToolParams('expand_range', p, { period: 'string', start_day: 'number', end_day: 'number' });
+        validateToolParams('expand_range', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          start_day: 'number',
+          end_day: 'number',
+        });
         return expandRange(today, p as { period: PeriodRef; start_day: number; end_day: number });
 
       case 'expand_alternate':
-        validateToolParams('expand_alternate', p, { period: 'string', type: 'string' });
+        validateToolParams('expand_alternate', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          type: { type: 'string', enum: ['calendar', 'working'] },
+        });
         return expandAlternate(today, p as { period: PeriodRef; type: 'calendar' | 'working' });
 
       case 'expand_half_month':
-        validateToolParams('expand_half_month', p, { period: 'string', half: 'string' });
+        validateToolParams('expand_half_month', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          half: { type: 'string', enum: ['first', 'second'] },
+        });
         return expandHalfMonth(today, p as { period: PeriodRef; half: 'first' | 'second' });
 
       case 'expand_except':
-        validateToolParams('expand_except', p, { period: 'string', exclude_day: 'string' });
+        validateToolParams('expand_except', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          exclude_day: { type: 'string', enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] },
+        });
         return expandExcept(today, p as { period: PeriodRef; exclude_day: string });
 
       case 'expand_first_weekday_per_week':
-        validateToolParams('expand_first_weekday_per_week', p, { period: 'string' });
+        validateToolParams('expand_first_weekday_per_week', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+        });
         return expandFirstWeekdayPerWeek(today, p as { period: PeriodRef });
 
       case 'expand_week_period':
-        validateToolParams('expand_week_period', p, { week: 'string' });
+        validateToolParams('expand_week_period', p, {
+          week: { type: 'string', enum: ['this_week', 'next_week'] },
+        });
         return expandWeekPeriod(today, p as { week: 'this_week' | 'next_week' });
 
       case 'expand_rest_of_month':

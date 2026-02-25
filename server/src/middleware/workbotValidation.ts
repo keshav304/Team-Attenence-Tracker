@@ -13,9 +13,24 @@ const parseSchema = z.object({
   command: z.string().min(1).max(1000),
 });
 
+/** Constrained param value: primitives, arrays of primitives, or shallow objects */
+const toolCallParamValue: z.ZodType = z.union([
+  z.string().max(200),
+  z.number(),
+  z.boolean(),
+  z.array(z.union([z.string().max(200), z.number(), z.boolean()])).max(100),
+  z.record(z.string().max(100), z.union([z.string().max(200), z.number(), z.boolean()])).refine(
+    (obj) => Object.keys(obj).length <= 20,
+    { message: 'Nested param object must have at most 20 keys' },
+  ),
+]);
+
 const toolCallSchema = z.object({
-  tool: z.string().min(1),
-  params: z.record(z.string(), z.unknown()),
+  tool: z.string().min(1).max(100),
+  params: z.record(z.string().max(100), toolCallParamValue).refine(
+    (obj) => Object.keys(obj).length <= 20,
+    { message: 'params must have at most 20 keys' },
+  ),
 });
 
 const scheduleActionSchema = z.object({
@@ -28,8 +43,10 @@ const scheduleActionSchema = z.object({
   referenceUser: z.string().max(100).optional(),
   referenceCondition: z.enum(['present', 'absent']).optional(),
 }).superRefine((data, ctx) => {
-  // XOR: at least one of toolCall or dateExpressions must be present
-  if (!data.toolCall && (!data.dateExpressions || data.dateExpressions.length === 0)) {
+  // Inclusive OR: at least one of toolCall or dateExpressions must be present
+  // (dateExpressions.min(1) already rejects empty arrays, so we only
+  //  need to check for the field's existence here)
+  if (!data.toolCall && !data.dateExpressions) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['toolCall'],
