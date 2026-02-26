@@ -41,8 +41,8 @@ const SUGGESTED_QUESTIONS = [
   'What is my office percentage this month?',
   'Who is in office today?',
   'Which day next week has the highest attendance?',
-  'Compare my and John\'s office days this month',
-  'Suggest the best day to avoid overlap with John next month',
+  'Compare my and "a colleague"\'s office days this month',
+  'Suggest the best day to avoid overlap with a colleague next month',
   'Am I below the team average for office attendance?',
 ];
 
