@@ -12,23 +12,7 @@ const seed = async () => {
     await mongoose.connect(MONGODB_URI);
     console.log('Connected to MongoDB');
 
-    // Clear existing data
-    await User.deleteMany({});
-    await Holiday.deleteMany({});
-
-    // Create admin user
-    const admin = await User.create({
-      name: 'Admin User',
-      email: 'admin@team.com',
-      password: 'admin123',
-      role: 'admin',
-    });
-
-    // Create team members
-    const members = await User.create([
-      { name: 'Keshav Jha', email: 'keshav.jha@dunnhumby.com', password: 'password123' },
-    ]);
-
+    
     // Create some holidays for 2026
     await Holiday.create([
       { date: '2026-01-01', name: 'New Year\'s Day' },
@@ -44,8 +28,6 @@ const seed = async () => {
     ]);
 
     console.log('✅ Seed data created:');
-    console.log(`   Admin: ${admin.email} / admin123`);
-    members.forEach((m: any) => console.log(`   Member: ${m.email} / password123`));
     console.log('   10 holidays created for 2026');
 
     await mongoose.disconnect();
