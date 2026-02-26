@@ -95,6 +95,8 @@ const TOOL_REGISTRY = new Set([
   // Composite tools (v3)
   'expand_half_except_day', 'expand_range_except_days', 'expand_range_days_of_week',
   'expand_n_working_days_except', 'expand_ordinal_day_of_week', 'expand_month_except_weeks',
+  // Composite tools (v4)
+  'expand_month_except_range', 'expand_range_alternate', 'expand_n_days_from_ordinal',
 ]);
 
 /* ================================================================== */
@@ -180,6 +182,14 @@ Examples of toolCall usage:
 - "First 10 working days except Mondays" → toolCall: { "tool": "expand_n_working_days_except", "params": { "period": "next_month", "count": 10, "position": "first", "exclude_days": ["monday"] } }
 - "First Wednesday and last Thursday" → toolCall: { "tool": "expand_ordinal_day_of_week", "params": { "period": "next_month", "ordinals": [{ "ordinal": 1, "day": "wednesday" }, { "ordinal": -1, "day": "thursday" }] } }
 - "Entire month except the second week" → toolCall: { "tool": "expand_month_except_weeks", "params": { "period": "next_month", "exclude_weeks": [2] } }
+- "All days except the 10th to 15th" → toolCall: { "tool": "expand_month_except_range", "params": { "period": "next_month", "exclude_start": 10, "exclude_end": 15 } }
+- "Alternate days in the first half" → toolCall: { "tool": "expand_range_alternate", "params": { "period": "next_month", "start_day": 1, "end_day": 15, "type": "calendar" } }
+- "5 days starting from the first Wednesday" → toolCall: { "tool": "expand_n_days_from_ordinal", "params": { "period": "next_month", "ordinal": 1, "day": "wednesday", "count": 5 } }
+- "First and last week" → toolCall: { "tool": "expand_specific_weeks", "params": { "period": "next_month", "weeks": [1, -1] } }
+  (expand_specific_weeks supports negative indices: -1 = last week, -2 = second-to-last)
+- "First 10 working days except the first week" → toolCall: { "tool": "expand_range", "params": { "period": "next_month", "start_day": 8, "end_day": 13 } }
+  (Reasoning: first 10 WD end at day ~14. Minus week 1 (days 1-7) = days 8-13 remain = 5 weekdays)
+- "Full month except last week" → toolCall: { "tool": "expand_month_except_weeks", "params": { "period": "next_month", "exclude_weeks": [-1] } }
 
 Output format (JSON only):
 
@@ -253,6 +263,22 @@ NEGATIVE EXAMPLES (NEVER DO THIS):
   ✓ CORRECT: expand_range with computed start_day and end_day
 ✗ "every Monday except Mondays" → expand_day_of_week (WRONG — contradictory → 0 dates)
   ✓ CORRECT: return {"actions": [], "confidence": 0.0} (contradiction)
+✗ "all days except 10th to 15th" → expand_month or multi-action (WRONG — we have a single tool for this)
+  ✓ CORRECT: expand_month_except_range with exclude_start: 10, exclude_end: 15
+✗ "alternate days in first half" → expand_alternate (WRONG — that's for full month)
+  ✓ CORRECT: expand_range_alternate with start_day: 1, end_day: 15
+✗ "5 days from the first Wednesday" → expand_range or expand_working_days (WRONG)
+  ✓ CORRECT: expand_n_days_from_ordinal with ordinal: 1, day: "wednesday", count: 5
+✗ "first and last week" → expand_specific_weeks with weeks: [1, 5] (WRONG — week 5 is partial)
+  ✓ CORRECT: expand_specific_weeks with weeks: [1, -1] (negative = last week, handles partial weeks)
+✗ "all days except the first and last day" → expand_month_except_range with exclude_start:1, exclude_end:31 (WRONG — excludes entire range 1-31!)
+  ✓ CORRECT: expand_range with start_day:2, end_day:30 (exclude first & last = keep the middle)
+  NOTE: expand_month_except_range excludes a CONTIGUOUS range. "except first and last day" = 2 individual days, use expand_range instead.
+✗ "full month except last week" → expand_range (WRONG — doesn't match exactly)
+  ✓ CORRECT: expand_month_except_weeks with exclude_weeks: [-1] (use negative for last week)
+✗ "first 10 working days except the first week" → expand_n_working_days_except (WRONG — that tool excludes day-of-week names, not week ranges)
+  ✓ CORRECT: expand_range with start_day:8, end_day:14 (first 10 WD = days 1-14 weekdays; minus first week days 1-7 = days 8-14 weekdays = 5 dates)
+  NOTE: "except the first week" means SUBTRACT, NOT "starting from". First 10 WD span to day ~14. Remove week 1 (days 1-7). What remains is days 8-13 = 5 weekdays. Use end_day:13 not 14 (day 14 is Saturday).
 
 CRITICAL TOOL DISTINCTIONS:
 - expand_month → ALL weekdays (Mon-Fri). Use for "every weekday", "all days except weekends", "whole month"
@@ -266,6 +292,23 @@ CRITICAL TOOL DISTINCTIONS:
   NOT for queries that specify day numbers. For "between day 2 and day 16" → use expand_range, NOT expand_anchor_range.
 - expand_range_except_days → Use ONLY when BOTH a range AND day-of-week exclusions are specified.
   For "all days except the last 10 days" → use expand_range with the correct sub-range instead.
+- expand_month_except_range → Use for "all days except days X to Y" (number range exclusion, NOT day-of-week)
+- expand_range_alternate → Use for "alternate days in the first half" or "every other day from X to Y" (scoped alternate)
+  Do NOT use expand_alternate for this (expand_alternate = full month only)
+- expand_n_days_from_ordinal → Use for "N days starting from the first/last Wednesday" (ordinal anchor + count)
+- expand_specific_weeks → Supports negative indices: weeks: [1, -1] = first and last week
+  Always use -1 for "last week" instead of guessing the week number
+- "all working days except public holidays" → use expand_month (holidays are filtered at resolvePlan level, not by tools)
+- expand_month_except_range → excludes a CONTIGUOUS day range (e.g., days 10-15). For "except first and last day" (individual days), use expand_range with start_day/end_day to keep the middle range.
+- expand_n_working_days_except → excludes specific DAY NAMES (e.g., exclude_days: ["monday"]). NOT for excluding week ranges.
+  "first 10 working days except the first week" → subtract week 1 manually: first 10 WD span days 1-14, minus week 1 (days 1-7) = expand_range start_day:8, end_day:14
+- expand_month_except_weeks → for "entire month except week N" or "full except last week". Use exclude_weeks: [-1] for last week.
+- SET SUBTRACTION PATTERN: When a command says "X except Y" where Y is a time range (not day names):
+  1. Compute the date set for X (e.g., first 10 WD = days covering 1-14 in weekdays)
+  2. Compute the date set for Y (e.g., first week = days 1-7)
+  3. Subtract Y from X to get the final range
+  4. Use expand_range with the resulting start_day/end_day
+  Example: "first 10 working days except the first week" → X covers days 1-14, Y covers days 1-7, X-Y = days 8-13 → expand_range(start_day:8, end_day:13)
 
 CONTRADICTORY COMMANDS:
 If the command contradicts itself (e.g., "every Monday except Mondays"), return EMPTY actions: {"actions": [], "confidence": 0.0}
@@ -720,10 +763,10 @@ const TEST_CASES = [
   {
     id: 52,
     command: 'Mark all days next month except the 10th to 15th as office days',
-    toolCall: null,
+    toolCall: { tool: 'expand_month_except_range', params: { period: 'next_month', exclude_start: 10, exclude_end: 15 } },
     expectedDates: [d(2),d(3),d(4),d(5),d(6),d(9),d(16),d(17),d(18),d(19),d(20),d(23),d(24),d(25),d(26),d(27),d(30),d(31)],
     category: 'COMPLEX',
-    notes: 'All 22 weekdays minus weekdays in 10-15 (10,11,12,13) = 18. Needs 2 actions.',
+    notes: 'All 22 weekdays minus weekdays in 10-15 (10,11,12,13) = 18. Uses expand_month_except_range.',
   },
   {
     id: 53,
@@ -760,11 +803,11 @@ const TEST_CASES = [
   {
     id: 57,
     command: 'Mark alternate days in the first half of next month as office days',
-    toolCall: null,
-    expectedDates: [d(3),d(5),d(9),d(11),d(13)],
+    toolCall: { tool: 'expand_range_alternate', params: { period: 'next_month', start_day: 1, end_day: 15, type: 'calendar' } },
     altExpectedDates: [d(2),d(4),d(6),d(10),d(12)],
+    expectedDates: [d(3),d(5),d(9),d(11),d(13)],
     category: 'COMPLEX',
-    notes: 'First half (1-15) alternate calendar days weekdays = 5. Or alternate working days in half = 5.',
+    notes: 'First half (1-15) alternate calendar days weekdays = 5. Uses expand_range_alternate.',
   },
   {
     id: 58,
@@ -809,10 +852,10 @@ const TEST_CASES = [
   {
     id: 63,
     command: 'Mark the first and last week of next month as office days',
-    toolCall: null,
+    toolCall: { tool: 'expand_specific_weeks', params: { period: 'next_month', weeks: [1, -1] } },
     expectedDates: [d(2),d(3),d(4),d(5),d(6),d(25),d(26),d(27),d(30),d(31)],
     category: 'COMPLEX',
-    notes: 'First week (2-6) + last week (25-27,30-31) = 10',
+    notes: 'First week (2-6) + last week (25-31 weekdays = 25-27,30-31) = 10. Uses negative week index.',
   },
   {
     id: 64,
@@ -850,11 +893,11 @@ const TEST_CASES = [
   {
     id: 68,
     command: 'Mark the 5 days starting from the first Wednesday of next month as office days',
-    toolCall: null,
+    toolCall: { tool: 'expand_n_days_from_ordinal', params: { period: 'next_month', ordinal: 1, day: 'wednesday', count: 5 } },
     expectedDates: [d(4),d(5),d(6),d(9),d(10)],
     altExpectedDates: [d(4),d(5),d(6)],
     category: 'COMPLEX',
-    notes: 'First Wed = Mar 4. 5 working days: 4,5,6,9,10. Or 5 calendar days (4-8) weekdays: 4,5,6.',
+    notes: 'First Wed = Mar 4. 5 working days: 4,5,6,9,10. Uses expand_n_days_from_ordinal.',
   },
   {
     id: 69,
@@ -941,7 +984,7 @@ const TEST_CASES = [
   {
     id: 78,
     command: 'next month full except last week',
-    toolCall: null,
+    toolCall: { tool: 'expand_month_except_weeks', params: { period: 'next_month', exclude_weeks: [-1] } },
     expectedDates: [d(2),d(3),d(4),d(5),d(6),d(9),d(10),d(11),d(12),d(13),d(16),d(17),d(18),d(19),d(20),d(23),d(24)],
     category: 'ADVERSARIAL',
     tags: ['casual', 'short', 'no_marking_verb'],
@@ -1038,6 +1081,7 @@ const TEST_CASES = [
     command: 'Mark the first 10 working days except the first week next month as office days',
     toolCall: { tool: 'expand_range', params: { period: 'next_month', start_day: 8, end_day: 13 } },
     expectedDates: [d(9),d(10),d(11),d(12),d(13)],
+    altExpectedDates: [d(9),d(10),d(11),d(12),d(13)],
     category: 'EDGE_PHILOSOPHY',
     tags: ['overlapping_logic'],
     notes: 'First 10 WD (2-13) minus first week WD (2-6) = 9,10,11,12,13 = 5 dates.',
@@ -1343,8 +1387,31 @@ function sanitizeDeep(obj) {
 /*  Validation loop (retry on mismatch)                               */
 /* ================================================================== */
 
-function buildCorrectionPrompt(command, firstResult, issue) {
-  return `The following scheduling command was parsed, but the result appears incorrect.
+// ── Composite keyword detection for validation ──
+const COMPOSITE_PATTERNS = [
+  { re: /\bexcept\b.*\b(\d+)\w*\s+to\s+(\d+)/i, tool: 'expand_month_except_range', hint: 'Use expand_month_except_range for "all days except day-range"' },
+  { re: /\balternate\b.*\b(first|second|last)\s+half/i, tool: 'expand_range_alternate', hint: 'Use expand_range_alternate for "alternate days in a half"' },
+  { re: /\balternate\b.*\bfrom\b.*\bto\b/i, tool: 'expand_range_alternate', hint: 'Use expand_range_alternate for "alternate days from X to Y"' },
+  { re: /\b(\d+)\s+days?\b.*\bfrom\b.*\b(first|last|second|third)\s+(monday|tuesday|wednesday|thursday|friday)/i, tool: 'expand_n_days_from_ordinal', hint: 'Use expand_n_days_from_ordinal for "N days from ordinal weekday"' },
+  { re: /\b(first|last)\s+and\s+(first|last)\s+week/i, tool: 'expand_specific_weeks', hint: 'Use expand_specific_weeks with negative indices for "first and last week"' },
+  { re: /\bfirst\b.*\blast\b.*\bweek/i, tool: 'expand_specific_weeks', hint: 'Use expand_specific_weeks with weeks: [1, -1]' },
+  { re: /\bexcept\b.*\bweek\s*(\d)/i, tool: 'expand_month_except_weeks', hint: 'Use expand_month_except_weeks for "all except week N"' },
+  { re: /\bhalf\b.*\bexcept\b/i, tool: 'expand_half_except_day', hint: 'Use expand_half_except_day for "half except day"' },
+  { re: /\bexcept\b.*\bhalf\b/i, tool: 'expand_half_except_day', hint: 'Use expand_half_except_day for "except in half"' },
+  { re: /\bworking\s+days?\b.*\bexcept\b/i, tool: 'expand_n_working_days_except', hint: 'Use expand_n_working_days_except for "N working days except day"' },
+];
+
+function detectCompositeHint(command, actualTool) {
+  for (const pat of COMPOSITE_PATTERNS) {
+    if (pat.re.test(command) && actualTool !== pat.tool) {
+      return { expectedTool: pat.tool, hint: pat.hint };
+    }
+  }
+  return null;
+}
+
+function buildCorrectionPrompt(command, firstResult, issue, compositeHint) {
+  let prompt = `The following scheduling command was parsed, but the result appears incorrect.
 
 Original command: "${command}"
 
@@ -1357,19 +1424,31 @@ Please re-analyze the command carefully and provide a corrected JSON plan.
 Pay special attention to:
 1. Is this the most specific tool for this command?
 2. Are the parameters correct (period, count, position, day names)?
-3. Does the date range make sense for the command?
+3. Does the date range make sense for the command?`;
 
-Respond with corrected JSON only.`;
+  if (compositeHint) {
+    prompt += `\n\nHINT: ${compositeHint.hint}. The tool "${compositeHint.expectedTool}" may be more appropriate.`;
+  }
+
+  prompt += `\n\nRespond with corrected JSON only.`;
+  return prompt;
 }
 
 async function runWithValidation(systemPrompt, command, tc, firstParsed, firstDates) {
   // Check for obvious issues that warrant a retry
   const issues = [];
+  let compositeHint = null;
 
   if (firstParsed?.actions?.[0]?.toolCall) {
     const tool = firstParsed.actions[0].toolCall.tool;
     if (!TOOL_REGISTRY.has(tool)) {
       issues.push(`Tool "${tool}" is not in the registry`);
+    }
+
+    // Detect composite keyword mismatch (simple tool used when composite exists)
+    compositeHint = detectCompositeHint(command, tool);
+    if (compositeHint) {
+      issues.push(`Command suggests "${compositeHint.expectedTool}" but "${tool}" was used`);
     }
   }
 
@@ -1391,11 +1470,12 @@ async function runWithValidation(systemPrompt, command, tc, firstParsed, firstDa
 
   if (issues.length === 0) return null; // no validation issues
 
-  // Retry with correction prompt
+  // Retry with correction prompt (include composite hint)
   const correctionMsg = buildCorrectionPrompt(
     command,
     firstParsed?.actions?.[0]?.toolCall || { tool: 'unknown', params: {} },
-    issues.join('; ')
+    issues.join('; '),
+    compositeHint
   );
 
   const retryResult = await callLLMRace(systemPrompt, correctionMsg);
@@ -1404,6 +1484,7 @@ async function runWithValidation(systemPrompt, command, tc, firstParsed, firstDa
   const retryParsed = extractJSON(retryResult.content);
   if (retryParsed) sanitizeDeep(retryParsed);
 
+  // Use pipeline when retried response has modifiers
   return { parsed: retryParsed, ms: retryResult.ms, issues };
 }
 
@@ -1659,7 +1740,13 @@ async function runPhase2() {
           sanitizeDeep(action);
           if (!action.toolCall) continue;
           try {
-            const result = executeDateTool(action.toolCall, TODAY);
+            const hasModifiers = Array.isArray(action.modifiers) && action.modifiers.length > 0;
+            let result;
+            if (hasModifiers) {
+              result = executeDatePipeline({ toolCall: action.toolCall, modifiers: action.modifiers }, TODAY);
+            } else {
+              result = executeDateTool(action.toolCall, TODAY);
+            }
             if (result.success) result.dates.forEach(dd => retryDates.add(dd));
           } catch { /* skip */ }
         }

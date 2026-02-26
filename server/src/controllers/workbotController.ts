@@ -219,6 +219,11 @@ Examples of toolCall usage:
 - "First 10 working days except Mondays" → toolCall: { "tool": "expand_n_working_days_except", "params": { "period": "next_month", "count": 10, "position": "first", "exclude_days": ["monday"] } }
 - "First Wednesday and last Thursday" → toolCall: { "tool": "expand_ordinal_day_of_week", "params": { "period": "next_month", "ordinals": [{ "ordinal": 1, "day": "wednesday" }, { "ordinal": -1, "day": "thursday" }] } }
 - "Entire month except the second week" → toolCall: { "tool": "expand_month_except_weeks", "params": { "period": "next_month", "exclude_weeks": [2] } }
+- "All days except the 10th to 15th" → toolCall: { "tool": "expand_month_except_range", "params": { "period": "next_month", "exclude_start": 10, "exclude_end": 15 } }
+- "Alternate days in the first half" → toolCall: { "tool": "expand_range_alternate", "params": { "period": "next_month", "start_day": 1, "end_day": 15, "type": "calendar" } }
+- "5 days starting from the first Wednesday" → toolCall: { "tool": "expand_n_days_from_ordinal", "params": { "period": "next_month", "ordinal": 1, "day": "wednesday", "count": 5 } }
+- "First and last week" → toolCall: { "tool": "expand_specific_weeks", "params": { "period": "next_month", "weeks": [1, -1] } }
+  (expand_specific_weeks supports negative indices: -1 = last week, -2 = second-to-last)
 
 Examples of toolCall + modifiers (for complex commands ONLY when no composite tool fits):
 - "All days next month except the first week" →
@@ -241,7 +246,18 @@ PREFER composite tools over modifier chains when a composite tool fits exactly:
 - "First half except Fridays" → use expand_half_except_day (NOT expand_half_month + modifier)
 - "Entire month except second week" → use expand_month_except_weeks (NOT expand_month + modifier)
 - "Mon-Wed in first 3 weeks" → use expand_range_days_of_week (NOT expand_multiple_days_of_week)
+- "All days except 10th to 15th" → use expand_month_except_range (NOT expand_month + modifier)
+- "Alternate days in first half" → use expand_range_alternate (NOT expand_alternate)
+- "5 days from first Wednesday" → use expand_n_days_from_ordinal (NOT expand_range)
+- "First and last week" → use expand_specific_weeks with weeks: [1, -1] (NOT expand_weeks twice)
 Only use modifiers when no composite or single tool can handle the command alone.
+
+IMPORTANT TOOL DISTINCTIONS:
+- expand_month_except_range excludes a CONTIGUOUS day range (days X to Y). NOT for "except first and last day" (individual days).
+  "All days except first and last day" → expand_range with start_day:2, end_day:30 (keep the middle).
+- expand_n_working_days_except excludes specific DAY NAMES (exclude_days: ["monday"]). NOT for excluding week ranges.
+- expand_month_except_weeks → for "full month except last week", use exclude_weeks: [-1].
+- "full except last week" or "entire month except last week" → expand_month_except_weeks, NOT expand_range.
 
 Half-day leave rules:
 - If the user says "half day leave", "half-day leave", "half day off", or similar, set leaveDuration to "half"

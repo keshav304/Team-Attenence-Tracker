@@ -48,7 +48,11 @@ export type DateToolName =
   | 'expand_range_days_of_week'
   | 'expand_n_working_days_except'
   | 'expand_ordinal_day_of_week'
-  | 'expand_month_except_weeks';
+  | 'expand_month_except_weeks'
+  // ── Composite generators (v4) ──
+  | 'expand_month_except_range'
+  | 'expand_range_alternate'
+  | 'expand_n_days_from_ordinal';
 
 /**
  * A tool call from the LLM: tool name + typed parameters.
@@ -775,12 +779,31 @@ function expandSpecificWeeks(
 ): DateToolResult {
   const { year, month } = parsePeriod(today, params.period);
   const total = daysInMonth(year, month);
-  const weekSet = new Set(params.weeks);
+
+  // Separate positive and negative week indices.
+  // Positive: calendar weeks (1=days 1-7, 2=days 8-14, etc.)
+  // Negative: counted from end (-1 = last 7 days, -2 = second-to-last 7 days)
+  const positiveWeeks = new Set<number>();
+  const negativeDays = new Set<number>(); // day-of-month numbers from negative weeks
+
+  for (const w of params.weeks) {
+    if (w > 0) {
+      positiveWeeks.add(w);
+    } else if (w < 0) {
+      // -1 = last 7 calendar days, -2 = days (total-13) to (total-7), etc.
+      const blockEnd = total + (w + 1) * 7; // -1 → total, -2 → total-7
+      const blockStart = blockEnd - 6;       // 7 days in a week
+      for (let i = Math.max(1, blockStart); i <= Math.min(total, blockEnd); i++) {
+        negativeDays.add(i);
+      }
+    }
+  }
+
   const dates: string[] = [];
 
   for (let i = 1; i <= total; i++) {
     const wk = calendarWeekOfMonth(i);
-    if (weekSet.has(wk)) {
+    if (positiveWeeks.has(wk) || negativeDays.has(i)) {
       const d = new Date(year, month, i);
       if (isWeekday(d)) dates.push(fmtDate(d));
     }
@@ -1085,15 +1108,29 @@ function expandMonthExceptWeeks(
 ): DateToolResult {
   const { year, month } = parsePeriod(today, params.period);
   const total = daysInMonth(year, month);
-  const excludeSet = new Set(params.exclude_weeks);
-  const dates: string[] = [];
 
+  // Resolve negative week indices: -1 = last week, -2 = second-to-last, etc.
+  const maxWeek = calendarWeekOfMonth(total);
+  const resolvedExclude = new Set(
+    params.exclude_weeks.map(w => (w < 0 ? maxWeek + 1 + w : w)),
+  );
+
+  // For negative indices, also exclude the last N*7 calendar days (same logic as expandSpecificWeeks)
+  const negativeDays = new Set<number>();
+  for (const w of params.exclude_weeks) {
+    if (w < 0) {
+      const absW = Math.abs(w);
+      const startDay = Math.max(1, total - absW * 7 + 1);
+      for (let d = startDay; d <= total; d++) negativeDays.add(d);
+    }
+  }
+
+  const dates: string[] = [];
   for (let i = 1; i <= total; i++) {
     const wk = calendarWeekOfMonth(i);
-    if (!excludeSet.has(wk)) {
-      const d = new Date(year, month, i);
-      if (isWeekday(d)) dates.push(fmtDate(d));
-    }
+    if (resolvedExclude.has(wk) || negativeDays.has(i)) continue;
+    const d = new Date(year, month, i);
+    if (isWeekday(d)) dates.push(fmtDate(d));
   }
 
   const monthName = new Date(year, month, 1).toLocaleString('en-US', { month: 'long' });
@@ -1101,6 +1138,109 @@ function expandMonthExceptWeeks(
     success: true,
     dates,
     description: `All weekdays in ${monthName} ${year} except week(s) ${params.exclude_weeks.join(', ')}: ${dates.length} dates`,
+  };
+}
+
+/**
+ * expand_month_except_range — All weekdays in a month except those within a day range.
+ * E.g. "all days except the 10th to 15th".
+ */
+function expandMonthExceptRange(
+  today: Date,
+  params: { period: PeriodRef; exclude_start: number; exclude_end: number },
+): DateToolResult {
+  const { year, month } = parsePeriod(today, params.period);
+  const total = daysInMonth(year, month);
+  const dates: string[] = [];
+
+  for (let i = 1; i <= total; i++) {
+    if (i >= params.exclude_start && i <= params.exclude_end) continue;
+    const d = new Date(year, month, i);
+    if (isWeekday(d)) dates.push(fmtDate(d));
+  }
+
+  const monthName = new Date(year, month, 1).toLocaleString('en-US', { month: 'long' });
+  return {
+    success: true,
+    dates,
+    description: `All weekdays in ${monthName} ${year} except days ${params.exclude_start}–${params.exclude_end}: ${dates.length} dates`,
+  };
+}
+
+/**
+ * expand_range_alternate — Alternate days within a specific day range.
+ * E.g. "alternate days in the first half".
+ * type: 'calendar' = every other calendar day, 'working' = every other working day.
+ */
+function expandRangeAlternate(
+  today: Date,
+  params: { period: PeriodRef; start_day: number; end_day: number; type: 'calendar' | 'working' },
+): DateToolResult {
+  const { year, month } = parsePeriod(today, params.period);
+  const totalDays = daysInMonth(year, month);
+  const clampedStart = Math.max(params.start_day, 1);
+  const clampedEnd = Math.min(params.end_day, totalDays);
+  const dates: string[] = [];
+
+  if (params.type === 'calendar') {
+    for (let i = clampedStart; i <= clampedEnd; i += 2) {
+      const d = new Date(year, month, i);
+      if (isWeekday(d)) dates.push(fmtDate(d));
+    }
+  } else {
+    let toggle = true;
+    for (let i = clampedStart; i <= clampedEnd; i++) {
+      const d = new Date(year, month, i);
+      if (isWeekday(d)) {
+        if (toggle) dates.push(fmtDate(d));
+        toggle = !toggle;
+      }
+    }
+  }
+
+  const monthName = new Date(year, month, 1).toLocaleString('en-US', { month: 'long' });
+  return {
+    success: true,
+    dates,
+    description: `Every alternate ${params.type === 'working' ? 'working ' : ''}day in ${monthName} days ${clampedStart}–${clampedEnd}: ${dates.length} dates`,
+  };
+}
+
+/**
+ * expand_n_days_from_ordinal — N consecutive working days starting from an ordinal weekday.
+ * E.g. "5 days starting from the first Wednesday".
+ */
+function expandNDaysFromOrdinal(
+  today: Date,
+  params: { period: PeriodRef; ordinal: number; day: string; count: number },
+): DateToolResult {
+  const { year, month } = parsePeriod(today, params.period);
+  const anchorDay = getNthOccurrence(year, month, params.day, params.ordinal);
+  if (anchorDay === null) {
+    return {
+      success: false,
+      dates: [],
+      description: '',
+      error: `Could not find ordinal ${params.ordinal} of ${params.day}`,
+    };
+  }
+
+  const totalDays = daysInMonth(year, month);
+  const dates: string[] = [];
+  let count = 0;
+  for (let i = anchorDay; i <= totalDays && count < params.count; i++) {
+    const d = new Date(year, month, i);
+    if (isWeekday(d)) {
+      dates.push(fmtDate(d));
+      count++;
+    }
+  }
+
+  const monthName = new Date(year, month, 1).toLocaleString('en-US', { month: 'long' });
+  return {
+    success: true,
+    dates,
+    description: `${params.count} working days from ordinal ${params.ordinal} ${params.day} in ${monthName}: ${dates.length} dates`,
   };
 }
 
@@ -1530,6 +1670,34 @@ export function executeDateTool(
         });
         return expandMonthExceptWeeks(today, p as { period: PeriodRef; exclude_weeks: number[] });
 
+      /* ── Composite generators (v4) ────────────────────────────────── */
+
+      case 'expand_month_except_range':
+        validateToolParams('expand_month_except_range', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          exclude_start: 'number',
+          exclude_end: 'number',
+        });
+        return expandMonthExceptRange(today, p as { period: PeriodRef; exclude_start: number; exclude_end: number });
+
+      case 'expand_range_alternate':
+        validateToolParams('expand_range_alternate', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          start_day: 'number',
+          end_day: 'number',
+          type: { type: 'string', enum: ['calendar', 'working'] },
+        });
+        return expandRangeAlternate(today, p as { period: PeriodRef; start_day: number; end_day: number; type: 'calendar' | 'working' });
+
+      case 'expand_n_days_from_ordinal':
+        validateToolParams('expand_n_days_from_ordinal', p, {
+          period: { type: 'string', enum: ['next_month', 'this_month'] },
+          ordinal: 'number',
+          day: { type: 'string', enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] },
+          count: 'number',
+        });
+        return expandNDaysFromOrdinal(today, p as { period: PeriodRef; ordinal: number; day: string; count: number });
+
       default:
         return {
           success: false,
@@ -1896,6 +2064,30 @@ ALWAYS prefer these over generator+modifier when they match the semantic intent.
     Week numbering: week 1 = days 1-7, week 2 = days 8-14, week 3 = days 15-21, week 4 = days 22-28, week 5 = days 29-end
 
 ──────────────────────────────────────────────────────────────────────────
+COMPOSITE TOOLS (v4 — additional composite tools):
+
+26. expand_month_except_range
+    Use for: "all days except the 10th to 15th", "entire month except days 5-10"
+    All weekdays in a month minus a specific day range.
+    Params: { "period": "next_month" | "this_month", "exclude_start": <number>, "exclude_end": <number> }
+
+27. expand_range_alternate
+    Use for: "alternate days in the first half", "every other day from 1st to 15th"
+    Alternate days within a specific day range.
+    Params: { "period": "next_month" | "this_month", "start_day": <number>, "end_day": <number>, "type": "calendar" | "working" }
+    type "calendar" = every other calendar day (1,3,5,...), "working" = every other working day
+
+28. expand_n_days_from_ordinal
+    Use for: "5 days starting from the first Wednesday", "3 working days from the second Monday"
+    N consecutive working days starting from an ordinal weekday occurrence.
+    Params: { "period": "next_month" | "this_month", "ordinal": <number>, "day": "wednesday" | ..., "count": <number> }
+    ordinal: 1 = first, 2 = second, -1 = last
+
+NOTE ON expand_specific_weeks:
+    Supports NEGATIVE week indices: -1 = last week, -2 = second-to-last week.
+    Use for: "first and last week" → weeks: [1, -1]
+
+──────────────────────────────────────────────────────────────────────────
 COMPOSITE TOOL EXAMPLES:
 
 "First half except Fridays":
@@ -1915,6 +2107,18 @@ COMPOSITE TOOL EXAMPLES:
 
 "Days 1-21 except Fridays":
   toolCall: { "tool": "expand_range_except_days", "params": { "period": "next_month", "start_day": 1, "end_day": 21, "exclude_days": ["friday"] } }
+
+"All days except the 10th to 15th":
+  toolCall: { "tool": "expand_month_except_range", "params": { "period": "next_month", "exclude_start": 10, "exclude_end": 15 } }
+
+"Alternate days in the first half":
+  toolCall: { "tool": "expand_range_alternate", "params": { "period": "next_month", "start_day": 1, "end_day": 15, "type": "calendar" } }
+
+"5 days starting from the first Wednesday":
+  toolCall: { "tool": "expand_n_days_from_ordinal", "params": { "period": "next_month", "ordinal": 1, "day": "wednesday", "count": 5 } }
+
+"First and last week":
+  toolCall: { "tool": "expand_specific_weeks", "params": { "period": "next_month", "weeks": [1, -1] } }
 
 ──────────────────────────────────────────────────────────────────────────
 TOOL SELECTION RULES (CRITICAL):
@@ -1937,6 +2141,18 @@ ALWAYS use expand_ordinal_day_of_week. Never try to compute the date yourself.
 
 RULE 4: For "entire month except week N", ALWAYS use expand_month_except_weeks.
 Do NOT use expand_month with modifiers for this pattern.
+
+RULE 5: For "all days except days X to Y" or "month except the 10th to 15th",
+ALWAYS use expand_month_except_range. Do NOT try multi-action composition.
+
+RULE 6: For "alternate days in the first half" or "every other day from X to Y",
+ALWAYS use expand_range_alternate. Do NOT use expand_alternate (that's for full month only).
+
+RULE 7: For "N days starting from the first/last <dayname>",
+ALWAYS use expand_n_days_from_ordinal.
+
+RULE 8: For "first and last week", use expand_specific_weeks with weeks: [1, -1].
+Negative indices: -1 = last week, -2 = second-to-last.
 
 NEGATIVE EXAMPLES (DO NOT DO THIS):
 ✗ "first half except Fridays" → expand_half_month only (WRONG — ignores exclusion)
