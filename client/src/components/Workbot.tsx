@@ -83,7 +83,28 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
   const [applyResult, setApplyResult] = useState<WorkbotApplyResult | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [activeStep, setActiveStep] = useState(0); // For sequential step-by-step progress
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const stepTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  /** Advance activeStep from `from` to `to`, ensuring each intermediate step is visible for at least `ms` milliseconds. */
+  const advanceStepsTo = useCallback((from: number, to: number, msPerStep = 500): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      const tick = (current: number) => {
+        if (current >= to) {
+          resolve();
+          return;
+        }
+        const next = current + 1;
+        const timer = setTimeout(() => {
+          setActiveStep(next);
+          tick(next);
+        }, msPerStep);
+        stepTimersRef.current.push(timer);
+      };
+      tick(from);
+    });
+  }, []);
 
   /* ── Fetch templates ── */
   useEffect(() => {
@@ -108,10 +129,20 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
       setCommand(cmd);
       setErrorMessage('');
 
+      // Clear any lingering step timers
+      stepTimersRef.current.forEach(clearTimeout);
+      stepTimersRef.current = [];
+
       try {
-        // Phase 1: Parse
+        // Phase 1: Parse — start at step 0
+        setActiveStep(0);
         setPhase('parsing');
-        const parseRes = await workbotApi.parse(cmd);
+
+        // Run API call + step animation in parallel; both must finish before moving on
+        const [parseRes] = await Promise.all([
+          workbotApi.parse(cmd),
+          advanceStepsTo(0, 1, 600),         // step 0→1 animates while API runs
+        ]);
         const plan = parseRes.data.data;
         if (!plan || !plan.actions?.length) {
           setErrorMessage('Could not understand the command. Please try rephrasing.');
@@ -120,9 +151,15 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
         }
         setParseSummary(plan.summary || '');
 
-        // Phase 2: Resolve
+        // Phase 2: Resolve — step 2 active
+        setActiveStep(2);
         setPhase('resolving');
-        const resolveRes = await workbotApi.resolve(plan.actions as WorkbotAction[]);
+
+        const [resolveRes] = await Promise.all([
+          workbotApi.resolve(plan.actions as WorkbotAction[]),
+          advanceStepsTo(2, 4, 500),         // step 2→4 so step 3 can show 'done' tick
+        ]);
+
         const resolved = resolveRes.data.data;
         if (!resolved || !resolved.changes?.length) {
           setErrorMessage('No dates could be resolved from the command.');
@@ -136,6 +173,9 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
           selected: c.valid,
         }));
         setChanges(withSelection);
+
+        // Brief pause so user sees all checkmarks before switching view
+        await new Promise((r) => setTimeout(r, 350));
         setPhase('preview');
       } catch (err: unknown) {
         const backendMsg = extractErrorMsg(err);
@@ -143,7 +183,7 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
         setPhase('error');
       }
     },
-    [command]
+    [command, advanceStepsTo]
   );
 
   /* ── Confirm & apply ── */
@@ -154,6 +194,7 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
       return;
     }
 
+    setActiveStep(0);
     setPhase('applying');
     setErrorMessage('');
 
@@ -168,10 +209,15 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
           ...(c.workingPortion ? { workingPortion: c.workingPortion } : { workingPortion: 'wfh' as const }),
         } : {}),
       }));
-      const res = await workbotApi.apply(items);
+      const [res] = await Promise.all([
+        workbotApi.apply(items),
+        advanceStepsTo(0, 2, 500),         // step 0→2 so step 1 can show 'done' tick
+      ]);
       const result = res.data?.data;
       if (result) {
         setApplyResult(result);
+        // Brief pause so user sees all checkmarks before switching view
+        await new Promise((r) => setTimeout(r, 350));
         setPhase('done');
       } else {
         console.error('Workbot apply: unexpected response shape', res.data);
@@ -183,7 +229,7 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
       setErrorMessage(backendMsg || 'Failed to apply changes.');
       setPhase('error');
     }
-  }, [changes]);
+  }, [changes, advanceStepsTo]);
 
   /* ── Row toggling ── */
   const toggleRow = useCallback((date: string) => {
@@ -220,12 +266,22 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
 
   /* ── Reset ── */
   const resetAll = useCallback(() => {
+    stepTimersRef.current.forEach(clearTimeout);
+    stepTimersRef.current = [];
     setPhase('input');
     setCommand('');
     setParseSummary('');
     setChanges([]);
     setApplyResult(null);
     setErrorMessage('');
+    setActiveStep(0);
+  }, []);
+
+  /* ── Cleanup step timers on unmount ── */
+  useEffect(() => {
+    return () => {
+      stepTimersRef.current.forEach(clearTimeout);
+    };
   }, []);
 
   /* ── Voice handler ── */
@@ -368,33 +424,49 @@ const Workbot: React.FC<WorkbotProps> = ({ onBack }) => {
               <div className="workbot-thinking-steps">
                 {phase !== 'applying' ? (
                   <>
-                    {/* Parse + Resolve flow */}
+                    {/* Parse + Resolve flow — steps appear sequentially via activeStep */}
                     <WorkbotThinkingStep
                       icon="🧠"
                       text="Reading your natural language command"
-                      status={phase === 'parsing' ? 'active' : 'done'}
+                      status={activeStep > 0 ? 'done' : 'active'}
                     />
-                    <WorkbotThinkingStep
-                      icon="🔍"
-                      text="Extracting intent & actions via AI"
-                      status={phase === 'parsing' ? 'active' : 'done'}
-                    />
-                    <WorkbotThinkingStep
-                      icon="📅"
-                      text="Resolving dates to your calendar"
-                      status={phase === 'resolving' ? 'active' : phase === 'parsing' ? 'pending' : 'done'}
-                    />
-                    <WorkbotThinkingStep
-                      icon="✅"
-                      text="Preparing preview of changes"
-                      status={phase === 'resolving' ? 'active' : 'pending'}
-                    />
+                    {activeStep >= 1 && (
+                      <WorkbotThinkingStep
+                        icon="🔍"
+                        text="Extracting intent & actions via AI"
+                        status={activeStep > 1 ? 'done' : 'active'}
+                      />
+                    )}
+                    {activeStep >= 2 && (
+                      <WorkbotThinkingStep
+                        icon="📅"
+                        text="Resolving dates to your calendar"
+                        status={activeStep > 2 ? 'done' : 'active'}
+                      />
+                    )}
+                    {activeStep >= 3 && (
+                      <WorkbotThinkingStep
+                        icon="✅"
+                        text="Preparing preview of changes"
+                        status={activeStep >= 4 ? 'done' : 'active'}
+                      />
+                    )}
                   </>
                 ) : (
                   <>
-                    {/* Apply flow */}
-                    <WorkbotThinkingStep icon="📤" text="Sending changes to server" status="active" />
-                    <WorkbotThinkingStep icon="💾" text="Saving to your calendar" status="active" />
+                    {/* Apply flow — sequential steps */}
+                    <WorkbotThinkingStep
+                      icon="📤"
+                      text="Sending changes to server"
+                      status={activeStep > 0 ? 'done' : 'active'}
+                    />
+                    {activeStep >= 1 && (
+                      <WorkbotThinkingStep
+                        icon="💾"
+                        text="Saving to your calendar"
+                        status={activeStep >= 2 ? 'done' : 'active'}
+                      />
+                    )}
                   </>
                 )}
               </div>
